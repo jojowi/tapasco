@@ -539,7 +539,7 @@ proc generate_singular {kernel PORT sync} {
           variable interfaces [get_property CONFIG.ASSOCIATED_BUSIF $clk]
           if {[regexp $interface_rx $interfaces]} {
               disconnect_bd_net [get_bd_nets -of_objects $clk]    $clk
-              connect_bd_net [get_bd_pins sfp_clock] $clk
+              connect_bd_net [get_bd_pins sfp_rx_clock] $clk
 
               variable rst [get_bd_pins [lindex $pes 0]/[get_property CONFIG.ASSOCIATED_RESET $clk]]
               disconnect_bd_net [get_bd_nets -of_objects $rst]  $rst
