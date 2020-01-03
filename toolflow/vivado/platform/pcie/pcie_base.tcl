@@ -286,7 +286,7 @@
     set out_ic [tapasco::ip::create_axi_sc "out_ic" 1 4]
     tapasco::ip::connect_sc_default_clocks $out_ic "design"
 
-    if {$device_type != "virtexuplus"} {
+    if {$device_type != "virtexuplus" && $device_type != "virtexuplusHBM"} {
       if { $pcie_width == "x8" } {
         puts "Using PCIe IP for x8..."
         set bridge [tapasco::ip::create_pciebridgetolite "PCIeBridgeToLite"]
