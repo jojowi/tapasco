@@ -87,14 +87,14 @@ namespace eval platform {
 
     # create memory control AXI slave
     set s_axi_mem_ctrl [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_MEM_CTRL]
-    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] $s_axi_host
+    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] $s_axi_mem_ctrl
 
-    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 host/M_MEM_CTRL]
+    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
 
-    set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells host/out_ic]]
+    set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells /host/out_ic]]
     set num_mi [expr "$num_mi_old + 1"]
-    set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells host/out_ic]
-    connect_bd_intf_net $m_si [get_bd_intf_pins host/out_ic/[format "M%02d_AXI" $num_mi_old]]
+    set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells /host/out_ic]
+    connect_bd_intf_net $m_si [get_bd_intf_pins /host/out_ic/[format "M%02d_AXI" $num_mi_old]]
 
 
     create_ddr4_constraints
