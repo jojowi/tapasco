@@ -196,11 +196,12 @@ ssize_t tlkm_dma_copy_to(struct dma_engine *dma, dev_addr_t dev_addr,
 		       "using buffer: %d and waiting for t_id == %zd",
 		       current_buffer, t_ids[current_buffer]);
 		cpy_sz = len < TLKM_DMA_CHUNK_SZ ? len : TLKM_DMA_CHUNK_SZ;
-		if (wait_event_interruptible(
-			    dma->wq, atomic64_read(&dma->wq_processed) >=
-					     t_ids[current_buffer])) {
+		int ret = wait_event_interruptible(
+			    dma->wq,
+			    atomic64_read(&dma->wq_processed) >= t_ids[current_buffer]);
+		if (ret) {
 			DEVWRN(dma->dev_id,
-			       "got killed while hanging in waiting queue");
+			       "got killed while hanging in waiting queue %d", ret);
 			err = -EACCES;
 			goto copy_err;
 		}
@@ -232,11 +233,12 @@ ssize_t tlkm_dma_copy_to(struct dma_engine *dma, dev_addr_t dev_addr,
 	}
 
 	for (i = 0; i < TLKM_DMA_CHUNKS; ++i) {
-		if (wait_event_interruptible(
+		int ret = wait_event_interruptible(
 			    dma->wq,
-			    atomic64_read(&dma->wq_processed) >= t_ids[i])) {
+			    atomic64_read(&dma->wq_processed) >= t_ids[i]);
+		if (ret) {
 			DEVWRN(dma->dev_id,
-			       "got killed while hanging in waiting queue");
+			       "got killed while hanging in waiting queue2 %d", ret);
 			err = -EACCES;
 			goto copy_err;
 		}

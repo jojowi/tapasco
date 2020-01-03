@@ -135,7 +135,7 @@ namespace eval arch {
     for {set i 0} {$i < $no_kinds} {incr i} {
       set no_inst [dict get $composition $i count]
       set example [get_bd_cells [format "target_ip_%02d_000" $i]]
-      set masters [tapasco::get_aximm_interfaces $example]
+      set masters [tapasco::get_aximm_interfaces_exclude $example "*HBM*"]
       set ic_m [expr "$ic_m + [llength $masters] * $no_inst"]
 
       set m_total [expr "$m_total + [llength $masters] * $no_inst"]
@@ -259,7 +259,7 @@ namespace eval arch {
   # Connects the threadpool to memory interconnects.
   proc arch_connect_mem {mem_ics ips} {
     # get PE masters
-    set masters [lsort -dictionary [tapasco::get_aximm_interfaces $ips]]
+    set masters [lsort -dictionary [tapasco::get_aximm_interfaces_exclude $ips "*HBM*"]]
     # interleave slaves of out ic trees
     set outs [get_bd_cells -filter {NAME =~ "out_*"}]
     set sc [llength [tapasco::get_aximm_interfaces $outs "Slave"]]

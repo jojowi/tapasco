@@ -111,12 +111,21 @@ namespace eval tapasco {
     return "2019.10"
   }
 
+
   # Returns the interface pin groups for all AXI MM interfaces on cell.
   # @param cell the object whose interfaces shall be returned
   # @parma mode filters interfaces by mode (default: Master)
   # @return list of interface pins
   proc get_aximm_interfaces {cell {mode "Master"}} {
     return [get_bd_intf_pins -of_objects $cell -filter "VLNV =~ xilinx.com:interface:aximm_rtl:* && MODE == $mode"]
+  }
+
+  proc get_aximm_interfaces_exclude {cell exclude {mode "Master"}} {
+    return [get_bd_intf_pins -of_objects $cell -filter "VLNV =~ xilinx.com:interface:aximm_rtl:* && MODE == $mode && NAME !~ $exclude"]
+  }
+
+  proc get_aximm_interfaces_match {cell match {mode "Master"}} {
+    return [get_bd_intf_pins -of_objects $cell -filter "VLNV =~ xilinx.com:interface:aximm_rtl:* && MODE == $mode && NAME =~ $match"]
   }
 
   # Returns the given property of a given AXI MM interface.

@@ -24,21 +24,6 @@ namespace eval platform {
   set platform_dirname "xupvvh"
   set pcie_width "x16"
 
-  proc get_ignored_segments { } {
-    set hbmInterfaces [hbm::get_hbm_interfaces]
-    set ignored [list]
-    lappend ignored "hbm/hbm_0/SAXI_"
-    for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
-      for {set j 0} {$j < [llength $hbmInterfaces]} {incr j} {
-        set axi_index [format %02s $i]
-        set mem_index [format %02s $j]
-        lappend ignored "/hbm/hbm_0/SAXI_${axi_index}/HBM_MEM${mem_index}"
-      }
-    }
-    return $ignored
-  }
-
-
   source $::env(TAPASCO_HOME_TCL)/platform/pcie/pcie_base.tcl
 
   proc create_mig_core {name} {
@@ -87,14 +72,14 @@ namespace eval platform {
 
     # create memory control AXI slave
     set s_axi_mem_ctrl [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_MEM_CTRL]
-    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] $s_axi_host
+    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] $s_axi_mem_ctrl
 
-    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 host/M_MEM_CTRL]
+    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
 
-    set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells host/out_ic]]
+    set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells /host/out_ic]]
     set num_mi [expr "$num_mi_old + 1"]
-    set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells host/out_ic]
-    connect_bd_intf_net $m_si [get_bd_intf_pins host/out_ic/[format "M%02d_AXI" $num_mi_old]]
+    set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells /host/out_ic]
+    connect_bd_intf_net $m_si [get_bd_intf_pins /host/out_ic/[format "M%02d_AXI" $num_mi_old]]
 
 
     create_ddr4_constraints

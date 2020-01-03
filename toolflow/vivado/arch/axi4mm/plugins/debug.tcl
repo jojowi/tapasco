@@ -51,7 +51,7 @@ namespace eval debug {
           dict for {clk intfs} $intf_map {
             set num_ifs [llength $intfs]
             set s_ila [tapasco::ip::create_system_ila "SILA_$i" $num_ifs $depth $stages]
-            set_property -dict [list CONFIG.C_EN_STRG_QUAL {1} CONFIG.C_PROBE0_MU_CNT {6} CONFIG.ALL_PROBE_SAME_MU_CNT {6}] $s_ila
+            set_property -dict [list CONFIG.C_EN_STRG_QUAL {1} CONFIG.C_PROBE0_MU_CNT {6} CONFIG.ALL_PROBE_SAME_MU_CNT {6} CONFIG.C_SLOT_0_MAX_RD_BURSTS {4} CONFIG.C_SLOT_0_MAX_WR_BURSTS {4} CONFIG.C_BRAM_CNT {6}] $s_ila
             puts "  create System ILA SILA_$i for $num_ifs interfaces with depth $depth and $stages stages"
             set s 0
             foreach ifs $intfs {

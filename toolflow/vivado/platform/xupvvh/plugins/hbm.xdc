@@ -1,0 +1,11 @@
+set_property PACKAGE_PIN BH27 [get_ports hbm_ref_clk_0_p]
+set_property PACKAGE_PIN BJ27 [get_ports hbm_ref_clk_0_n]
+set_property IOSTANDARD DIFF_SSTL12_DCI [get_ports hbm_ref_clk_0_p]
+set_property IOSTANDARD DIFF_SSTL12_DCI [get_ports hbm_ref_clk_0_n]
+set_property ODT RTT_48 [get_ports hbm_ref_clk_0_p]
+
+set_property PACKAGE_PIN BH26 [get_ports hbm_ref_clk_1_p]
+set_property PACKAGE_PIN BH25 [get_ports hbm_ref_clk_1_n]
+set_property IOSTANDARD DIFF_SSTL12_DCI [get_ports hbm_ref_clk_1_p]
+set_property IOSTANDARD DIFF_SSTL12_DCI [get_ports hbm_ref_clk_1_n]
+set_property ODT RTT_48 [get_ports hbm_ref_clk_1_p]

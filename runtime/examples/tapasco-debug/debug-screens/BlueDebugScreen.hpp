@@ -62,6 +62,7 @@ protected:
 
   virtual void update() {
     // Update BlueDMA data
+    
     platform_read_ctl(tapasco.platform_device(), dma_addr + 0,
                       sizeof(dma.host_addr), &dma.host_addr,
                       PLATFORM_CTL_FLAGS_RAW);
@@ -123,6 +124,7 @@ protected:
     }
 
     base_addr = intc_addr + 0x8000;
+    
     int pba_vecs = (total_interrupts / 64) + ((total_interrupts % 64) != 0);
     for (int i = 0; i < pba_vecs; ++i) {
       platform_read_ctl(tapasco.platform_device(), base_addr,
@@ -130,7 +132,7 @@ protected:
                         PLATFORM_CTL_FLAGS_RAW);
       base_addr += 8;
     }
-
+    
     base_addr = intc_addr + 0x8100;
     platform_read_ctl(tapasco.platform_device(), base_addr,
                       sizeof(intr.core_id), &intr.core_id,

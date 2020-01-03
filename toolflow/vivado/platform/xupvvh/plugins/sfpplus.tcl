@@ -3,16 +3,19 @@ proc create_custom_subsystem_network {{args {}}} {
 
   variable data [tapasco::get_feature "SFPPLUS"]
   variable ports [sfpplus::get_portlist $data]
-  # tapasco::get_board_specs
+
   create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_NETWORK
   sfpplus::makeMaster "M_NETWORK"
   puts "Creating Network Interfaces for Ports: $ports"
   sfpplus::generate_cores $ports
 
   current_bd_instance /arch
-  create_bd_pin -type clk -dir I sfp_clock
-  create_bd_pin -type rst -dir I sfp_reset
-  create_bd_pin -type rst -dir I sfp_resetn
+  create_bd_pin -type clk -dir I sfp_tx_clock
+  create_bd_pin -type clk -dir I sfp_rx_clock
+  create_bd_pin -type rst -dir I sfp_tx_reset
+  create_bd_pin -type rst -dir I sfp_tx_resetn
+  create_bd_pin -type rst -dir I sfp_rx_reset
+  create_bd_pin -type rst -dir I sfp_rx_resetn
 
   variable value [dict values [dict remove $data enabled]]
   foreach port $value {
@@ -21,31 +24,10 @@ proc create_custom_subsystem_network {{args {}}} {
   puts "Network Connection done"
   current_bd_instance /network
 }
-
-if {[tapasco::get_board_preset] == "VC709"} {
-  proc create_custom_subsystem_si5324 { } {
-    create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_SI5324
-    sfpplus::makeMaster "M_SI5324"
-    puts "Setting up the Clock for 10G-SFP Config"
-
-    create_bd_port -dir O -from 1 -to 0 i2c_reset
-
-    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_iic:2.0 SI5324Prog_0
-    set_property -dict [list CONFIG.C_SCL_INERTIAL_DELAY {5} CONFIG.C_SDA_INERTIAL_DELAY {5} CONFIG.C_GPO_WIDTH {2}] [get_bd_cells SI5324Prog_0]
-
-    create_bd_intf_port -mode Master -vlnv xilinx.com:interface:iic_rtl:1.0 IIC
-    connect_bd_intf_net [get_bd_intf_ports /IIC] [get_bd_intf_pins SI5324Prog_0/IIC]
-    connect_bd_intf_net [get_bd_intf_pins S_SI5324] [get_bd_intf_pins SI5324Prog_0/S_AXI]
-    connect_bd_net [get_bd_pins SI5324Prog_0/s_axi_aclk] [get_bd_pins design_clk]
-    connect_bd_net [get_bd_pins SI5324Prog_0/s_axi_aresetn] [get_bd_pins design_peripheral_aresetn]
-    connect_bd_net [get_bd_ports /i2c_reset] [get_bd_pins SI5324Prog_0/gpo]
-
-    sfpplus::write_SI5324_Constraints
-  }
-}
 }
 
 namespace eval sfpplus {
+  variable available_ports 16
   if {[tapasco::get_board_preset] == "ZC706"} {
     variable available_ports 1
     variable rx_ports       {"Y6"}
@@ -244,163 +226,107 @@ proc validate_roundrobin {config} {
 
 # Generate Network Setup
 proc generate_cores {ports} {
-  variable rx_ports
-  variable tx_ports
-  variable refclk_pins
-  variable disable_pins
-  variable fault_pins
-  variable disable_pins_voltages
 
-  set constraints_fn "[get_property DIRECTORY [current_project]]/sfpplus.xdc"
-  set constraints_file [open $constraints_fn w+]
-
-  create_bd_pin -type clk -dir O sfp_clock
-  create_bd_pin -type rst -dir O sfp_resetn
-  create_bd_pin -type rst -dir O sfp_reset
+  set sfp_tx_clock [create_bd_pin -type clk -dir O sfp_tx_clock]
+  set sfp_tx_clock [create_bd_pin -type rst -dir O sfp_tx_resetn]
+  set sfp_tx_clock [create_bd_pin -type rst -dir O sfp_tx_reset]
+  set sfp_tx_clock [create_bd_pin -type clk -dir O sfp_rx_clock]
+  set sfp_tx_clock [create_bd_pin -type rst -dir O sfp_rx_resetn]
+  set sfp_tx_clock [create_bd_pin -type rst -dir O sfp_rx_reset]
 
   #Setup CLK-Ports for Ethernet-Subsystem
-  create_bd_port -dir I refclk_n
-  create_bd_port -dir I refclk_p
-  puts $constraints_file [format {set_property PACKAGE_PIN %s [get_ports %s]} [lindex $refclk_pins 0]  refclk_p]
+  set gt_refclk [ create_bd_intf_port -mode Slave -vlnv xilinx.com:interface:diff_clock_rtl:1.0 gt_refclk_0 ]
+  set_property CONFIG.FREQ_HZ 156250000 $gt_refclk
+
   # AXI Interconnect for Configuration
-  create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 AXI_Config
-  set_property CONFIG.NUM_SI 1 [get_bd_cells AXI_Config]
-  set_property CONFIG.NUM_MI [llength $ports] [get_bd_cells AXI_Config]
+  set AXI_Config [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 AXI_Config]
+  set_property CONFIG.NUM_SI 1 $AXI_Config
+  set_property CONFIG.NUM_MI [llength $ports] $AXI_Config
 
   set dclk_wiz [tapasco::ip::create_clk_wiz dclk_wiz]
   set_property -dict [list CONFIG.USE_SAFE_CLOCK_STARTUP {true} CONFIG.CLKOUT1_REQUESTED_OUT_FREQ 100 CONFIG.USE_LOCKED {false} CONFIG.USE_RESET {false}] $dclk_wiz
 
-  create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 "dclk_reset"
+  set dclk_reset [create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 dclk_reset]
 
-  connect_bd_net [get_bd_pins dclk_wiz/clk_out1] [get_bd_pins dclk_reset/slowest_sync_clk]
-  connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins dclk_reset/ext_reset_in]
+  connect_bd_net [get_bd_pins $dclk_wiz/clk_out1] [get_bd_pins $dclk_reset/slowest_sync_clk]
+  connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins $dclk_reset/ext_reset_in]
   connect_bd_net [get_bd_pins design_clk] [get_bd_pins $dclk_wiz/clk_in1]
-  connect_bd_net [get_bd_pins AXI_Config/M*_ACLK] [get_bd_pins $dclk_wiz/clk_out1]
-  connect_bd_net [get_bd_pins AXI_Config/M*_ARESETN] [get_bd_pins dclk_reset/peripheral_aresetn]
+  connect_bd_net [get_bd_pins $AXI_Config/M*_ACLK] [get_bd_pins $dclk_wiz/clk_out1]
+  connect_bd_net [get_bd_pins $AXI_Config/M*_ARESETN] [get_bd_pins $dclk_reset/peripheral_aresetn]
 
-  connect_bd_intf_net [get_bd_intf_pins AXI_Config/S00_AXI] [get_bd_intf_pins S_NETWORK]
-  connect_bd_net [get_bd_pins AXI_Config/S00_ACLK] [get_bd_pins design_clk]
-  connect_bd_net [get_bd_pins AXI_Config/S00_ARESETN] [get_bd_pins design_interconnect_aresetn]
-  connect_bd_net [get_bd_pins AXI_Config/ACLK] [get_bd_pins design_clk]
-  connect_bd_net [get_bd_pins AXI_Config/ARESETN] [get_bd_pins design_interconnect_aresetn]
+  connect_bd_intf_net [get_bd_intf_pins $AXI_Config/S00_AXI] [get_bd_intf_pins S_NETWORK]
+  connect_bd_net [get_bd_pins $AXI_Config/S00_ACLK] [get_bd_pins design_clk]
+  connect_bd_net [get_bd_pins $AXI_Config/S00_ARESETN] [get_bd_pins design_interconnect_aresetn]
+  connect_bd_net [get_bd_pins $AXI_Config/ACLK] [get_bd_pins design_clk]
+  connect_bd_net [get_bd_pins $AXI_Config/ARESETN] [get_bd_pins design_interconnect_aresetn]
+
+  set gty_txp [create_bd_port -dir O -from 15 -to 0 gty_txp_o]
+  set gty_txn [create_bd_port -dir O -from 15 -to 0 gty_txn_o]
+  set gty_rxp [create_bd_port -dir I -from 15 -to 0 gty_rxp_i]
+  set gty_rxn [create_bd_port -dir I -from 15 -to 0 gty_rxn_i]
+
+  set txp_concat [tapasco::ip::create_xlconcat txp_concat]
+  set txn_concat [tapasco::ip::create_xlconcat txn_concat]
+  connect_bd_net [get_bd_pins $txp_concat/dout] $gty_txp
+  connect_bd_net [get_bd_pins $txn_concat/dout] $gty_txn
 
   for {set i 0} {$i < [llength $ports]} {incr i} {
     variable port [lindex $ports $i]
-    # Global Ports to Physical
-    puts $constraints_file [format {# SFP-Port %d} $port]
-    create_bd_port -dir O txp_$port
-    create_bd_port -dir O txn_$port
-    puts $constraints_file [format {set_property PACKAGE_PIN %s [get_ports %s]} [lindex $tx_ports $port] txp_$port]
-    create_bd_port -dir O tx_disable_$port
-    puts $constraints_file [format {set_property PACKAGE_PIN %s [get_ports %s]} [lindex $disable_pins $port] tx_disable_$port]
-    puts $constraints_file [format {set_property IOSTANDARD %s [get_ports %s]} [lindex $disable_pins_voltages $port] tx_disable_$port]
-    create_bd_port -dir I rxp_$port
-    create_bd_port -dir I rxn_$port
-    puts $constraints_file [format {set_property PACKAGE_PIN %s [get_ports %s]} [lindex $rx_ports $port] rxp_$port]
-    #create_bd_port -dir I signal_detect_$port
-    create_bd_port -dir I tx_fault_$port
-    puts $constraints_file [format {set_property PACKAGE_PIN %s [get_ports %s]} [lindex $fault_pins $port] tx_fault_$port]
-    puts $constraints_file [format {set_property IOSTANDARD %s [get_ports %s]} [lindex $disable_pins_voltages $port] tx_fault_$port]
 
     # Local Pins (Network-Hierarchie)
-    create_bd_pin -dir O txp_$port
-    create_bd_pin -dir O txn_$port
-    create_bd_pin -dir O tx_disable_$port
-    create_bd_pin -dir I rxp_$port
-    create_bd_pin -dir I rxn_$port
-    create_bd_pin -dir I signal_detect_$port
-    create_bd_pin -dir I tx_fault_$port
     create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_RX_$port
     create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_TX_$port
-    # Connect Local pins to Global Ports
-    connect_bd_net [get_bd_ports /txp_$port] [get_bd_pins txp_$port]
-    connect_bd_net [get_bd_ports /txn_$port] [get_bd_pins txn_$port]
-    connect_bd_net [get_bd_ports /tx_disable_$port] [get_bd_pins tx_disable_$port]
-    connect_bd_net [get_bd_ports /rxp_$port] [get_bd_pins rxp_$port]
-    connect_bd_net [get_bd_ports /rxn_$port] [get_bd_pins rxn_$port]
-    #connect_bd_net [get_bd_ports /signal_detect_$port] [get_bd_pins signal_detect_$port]
-    connect_bd_net [get_bd_ports /tx_fault_$port] [get_bd_pins tx_fault_$port]
     # Create Hierachie for the Port
     variable group [create_bd_cell -type hier "PORT_$port"]
     current_bd_instance $group
     # Local Pins (Port-Hierarchie)
-    create_bd_pin -dir O txp
-    create_bd_pin -dir O txn
-    create_bd_pin -dir O tx_disable
-    create_bd_pin -dir I rxp
-    create_bd_pin -dir I rxn
-    create_bd_pin -dir I signal_detect
-    create_bd_pin -dir I tx_fault
-    create_bd_pin -dir I design_clk
-    create_bd_pin -dir I design_interconnect_aresetn
-    create_bd_pin -dir I design_peripheral_aresetn
-    create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_RX
-    create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_TX
-    create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_AXI_Config
+    set design_clk [create_bd_pin -dir I design_clk
+    set design_interconnect_aresetn [create_bd_pin -dir I design_interconnect_aresetn]
+    set design_peripheral_aresetn [create_bd_pin -dir I design_peripheral_aresetn]
+    set AXIS_RX [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_RX]
+    set AXIS_TX [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_TX]
+    set S_AXI_Config [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_AXI_Config]
     # Connect Port Hierachie to Network Hierarchie
-    connect_bd_intf_net [get_bd_intf_pins S_AXI_Config] [get_bd_intf_pins /Network/AXI_Config/M[format %02d $i]_AXI]
-    connect_bd_net [get_bd_pins txp] [get_bd_pins /Network/txp_$port]
-    connect_bd_net [get_bd_pins txn] [get_bd_pins /Network/txn_$port]
-    connect_bd_net [get_bd_pins tx_disable] [get_bd_pins /Network/tx_disable_$port]
-    connect_bd_net [get_bd_pins rxp] [get_bd_pins /Network/rxp_$port]
-    connect_bd_net [get_bd_pins rxn] [get_bd_pins /Network/rxn_$port]
-    connect_bd_net [get_bd_pins signal_detect] [get_bd_pins /Network/signal_detect_$port]
-    connect_bd_net [get_bd_pins tx_fault] [get_bd_pins /Network/tx_fault_$port]
+    connect_bd_intf_net $S_AXI_Config [get_bd_intf_pins /Network/AXI_Config/M[format %02d $i]_AXI]
+    
     connect_bd_net [get_bd_pins $dclk_wiz/clk_out1] [get_bd_pins design_clk]
-    connect_bd_net [get_bd_pins /network/dclk_reset/interconnect_aresetn] [get_bd_pins design_interconnect_aresetn]
-    connect_bd_net [get_bd_pins /network/dclk_reset/peripheral_aresetn] [get_bd_pins design_peripheral_aresetn]
-    connect_bd_intf_net [get_bd_intf_pins AXIS_RX] [get_bd_intf_pins /Network/AXIS_RX_$port]
-    connect_bd_intf_net [get_bd_intf_pins AXIS_TX] [get_bd_intf_pins /Network/AXIS_TX_$port]
-    # Create the 10G Network Subsystem for the Port
-    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_10g_ethernet:3.1 Ethernet10G
-    if {$i > 0} {
-      set_property -dict [list CONFIG.base_kr {BASE-R} CONFIG.SupportLevel {0} CONFIG.autonegotiation {0} CONFIG.fec {0} CONFIG.Statistics_Gathering {0} CONFIG.Statistics_Gathering {false} CONFIG.TransceiverControl {true} CONFIG.DRP {false}] [get_bd_cells Ethernet10G]
-      connect_bd_net [get_bd_pins $main_core/qplllock_out]           [get_bd_pins Ethernet10G/qplllock]
-      connect_bd_net [get_bd_pins $main_core/qplloutclk_out]         [get_bd_pins Ethernet10G/qplloutclk]
-      connect_bd_net [get_bd_pins $main_core/qplloutrefclk_out]      [get_bd_pins Ethernet10G/qplloutrefclk]
-      connect_bd_net [get_bd_pins $main_core/reset_counter_done_out] [get_bd_pins Ethernet10G/reset_counter_done]
-      connect_bd_net [get_bd_pins $main_core/txusrclk_out]           [get_bd_pins Ethernet10G/txusrclk]
-      connect_bd_net [get_bd_pins $main_core/txusrclk2_out]          [get_bd_pins Ethernet10G/txusrclk2]
-      connect_bd_net [get_bd_pins $main_core/txuserrdy_out]          [get_bd_pins Ethernet10G/txuserrdy]
-      connect_bd_net [get_bd_pins $main_core/coreclk_out]            [get_bd_pins Ethernet10G/coreclk]
-      connect_bd_net [get_bd_pins $main_core/gttxreset_out]          [get_bd_pins Ethernet10G/gttxreset]
-      connect_bd_net [get_bd_pins $main_core/gtrxreset_out]          [get_bd_pins Ethernet10G/gtrxreset]
-      connect_bd_net [get_bd_pins $main_core/gttxreset_out]          [get_bd_pins Ethernet10G/areset_coreclk]
-      connect_bd_net [get_bd_pins /Network/design_peripheral_areset] [get_bd_pins Ethernet10G/areset]
-    } else {
-      set_property -dict [list CONFIG.base_kr {BASE-R} CONFIG.SupportLevel {1} CONFIG.autonegotiation {0} CONFIG.fec {0} CONFIG.Statistics_Gathering {0} CONFIG.Statistics_Gathering {false} CONFIG.TransceiverControl {true} CONFIG.DRP {false}] [get_bd_cells Ethernet10G]
-      set main_core [get_bd_cells Ethernet10G]
-      connect_bd_net [get_bd_ports /refclk_p] [get_bd_pins Ethernet10G/refclk_p]
-      connect_bd_net [get_bd_ports /refclk_n] [get_bd_pins Ethernet10G/refclk_n]
-      connect_bd_net [get_bd_pins Ethernet10G/reset] [get_bd_pins /Network/design_peripheral_areset]
-      connect_bd_net [get_bd_pins Ethernet10G/coreclk_out] [get_bd_pins /Network/sfp_clock]
+    connect_bd_net [get_bd_pins /network/dclk_reset/interconnect_aresetn] $design_interconnect_aresetn
+    connect_bd_net [get_bd_pins /network/dclk_reset/peripheral_aresetn] $design_peripheral_aresetn
+    connect_bd_intf_net $AXIS_RX [get_bd_intf_pins /Network/AXIS_RX_$port]
+    connect_bd_intf_net $AXIS_TX [get_bd_intf_pins /Network/AXIS_TX_$port]
 
-      set out_inv [makeInverter "reset_inverter"]
-      connect_bd_net [get_bd_pins Ethernet10G/areset_datapathclk_out] [get_bd_pins /Network/sfp_reset]
-      connect_bd_net [get_bd_pins Ethernet10G/areset_datapathclk_out] [get_bd_pins $out_inv/Op1]
-      connect_bd_net [get_bd_pins /Network/sfp_resetn] [get_bd_pins $out_inv/Res]
-    }
+    set rxp_slice [tapasco::ip::create_xlslice rxp_slice]
+    set_property -dict [list CONFIG.DIN_WIDTH{16} CONFIG.DIN_FROM{$port} CONFIG.DIN_TO{$port}] $rxp_slice
+    set rxn_slice [tapasco::ip::create_xlslice rxn_slice]
+    set_property -dict [list CONFIG.DIN_WIDTH{16} CONFIG.DIN_FROM{$port} CONFIG.DIN_TO{$port}] $rxn_slice
+    connect_bd_net $gty_rxp [get_bd_pins $rxp_slice/Din]
+    connect_bd_net $gty_rxn [get_bd_pins $rxn_slice/Din]
 
-    connect_bd_net [get_bd_pins Ethernet10G/tx_axis_aresetn] [get_bd_pins $out_inv/Res]
-    connect_bd_net [get_bd_pins Ethernet10G/rx_axis_aresetn] [get_bd_pins $out_inv/Res]
-    connect_bd_intf_net [get_bd_intf_pins Ethernet10G/m_axis_rx] [get_bd_intf_pins AXIS_RX]
-    connect_bd_intf_net [get_bd_intf_pins Ethernet10G/s_axis_tx] [get_bd_intf_pins AXIS_TX]
-    connect_bd_intf_net [get_bd_intf_pins Ethernet10G/s_axi] [get_bd_intf_pins S_AXI_Config]
-    connect_bd_net [get_bd_pins Ethernet10G/txp] [get_bd_pins txp]
-    connect_bd_net [get_bd_pins Ethernet10G/txn] [get_bd_pins txn]
-    connect_bd_net [get_bd_pins Ethernet10G/rxp] [get_bd_pins rxp]
-    connect_bd_net [get_bd_pins Ethernet10G/rxn] [get_bd_pins rxn]
-    connect_bd_net [get_bd_pins Ethernet10G/dclk] [get_bd_pins design_clk]
-    connect_bd_net [get_bd_pins Ethernet10G/s_axi_aclk] [get_bd_pins design_clk]
-    connect_bd_net [get_bd_pins Ethernet10G/s_axi_aresetn] [get_bd_pins design_peripheral_aresetn]
-    connect_bd_net [get_bd_pins Ethernet10G/tx_fault] [get_bd_pins tx_fault]
-    connect_bd_net [get_bd_pins Ethernet10G/tx_disable] [get_bd_pins tx_disable]
-    connect_bd_net [get_bd_pins Ethernet10G/signal_detect] [get_bd_pins signal_detect]
+    set ethernet [tapasco::ip::create_xxv_ethernet ethernet]
+    set_property -dict [list CONFIG.LINE_RATE {10} CONFIG.BASE_R_KR {BASE-R} CONFIG.INCLUDE_AXI4_INTERFACE {1} CONFIG.INCLUDE_STATISTICS_COUNTERS {0} CONFIG.GT_REF_CLK_FREQ {156.25}] $ethernet
+
+
+    connect_bd_intf_net $gt_refclk [get_bd_intf_pins $ethernet/gt_ref_clk]
+    connect_bd_net [get_bd_pins $rxp_slice/Dout] [get_bd_pins $ethernet/gt_rxp_in_0]
+    connect_bd_net [get_bd_pins $rxn_slice/Dout] [get_bd_pins $ethernet/gt_rxn_in_0]
+    connect_bd_intf_net $S_AXI_Config [get_bd_intf_pins $ethernet/s_axi_0]
+    connect_bd_intf_net $AXIS_TX [get_bd_intf_pins $ethernet/axis_tx_0]
+    connect_bd_net [get_bd_pins $ethernet/tx_clk_out_0] [get_bd_pins $ethernet/rx_core_clk_0]
+    connect_bd_net [get_bd_pins /Network/design_peripheral_areset] [get_bd_pins $ethernet/sys_reset]
+    connect_bd_net $design_clk [get_bd_pins $ethernet/dclk]
+    connect_bd_net $design_clk [get_bd_pins $ethernet/s_axi_aclk_0]
+    connect_bd_net $design_peripheral_aresetn [get_bd_pins $ethernet/s_axi_aresetn_0]
+
+    connect_bd_net [get_bd_pins $ethernet/gt_txn_out_0] [get_bd_pins $txn_concat/In${port}]
+    connect_bd_net [get_bd_pins $ethernet/gt_txp_out_0] [get_bd_pins $txp_concat/In${port}]
+    connect_bd_intf_net [get_bd_intf_pins $ethernet/axis_rx_0] $AXIS_RX
+    connect_bd_net [get_bd_pins $ethernet/tx_clk_out] $sfp_tx_clock
+    connect_bd_net [get_bd_pins $ethernet/rx_clk_out] $sfp_rx_clock
+    connect_bd_net [get_bd_pins $ethernet/user_rx_reset] $sfp_rx_reset
+    connect_bd_net [get_bd_pins $ethernet/user_tx_reset] $sfp_tx_reset
+
     current_bd_instance /Network
   }
-  close $constraints_file
-  read_xdc $constraints_fn
-  set_property PROCESSING_ORDER NORMAL [get_files $constraints_fn]
 }
 
 # Build A Port Mode Setups
@@ -426,15 +352,21 @@ proc generate_port {input} {
     create_bd_pin -dir I design_interconnect_aresetn
     create_bd_pin -dir I design_peripheral_aresetn
     create_bd_pin -dir I design_peripheral_areset
-    create_bd_pin -dir I sfp_clock
-    create_bd_pin -dir I sfp_reset
-    create_bd_pin -dir I sfp_resetn
+    create_bd_pin -dir I sfp_tx_clock
+    create_bd_pin -dir I sfp_tx_reset
+    create_bd_pin -dir I sfp_tx_resetn
+    create_bd_pin -dir I sfp_rx_clock
+    create_bd_pin -dir I sfp_rx_reset
+    create_bd_pin -dir I sfp_rx_resetn
     create_bd_intf_pin -mode Slave  -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_RX
     create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:axis_rtl:1.0 AXIS_TX
     # Connect Hierarchie to the Upper Layer
-    connect_bd_net [get_bd_pins sfp_clock]  [get_bd_pins /arch/sfp_clock]
-    connect_bd_net [get_bd_pins sfp_reset]  [get_bd_pins /arch/sfp_reset]
-    connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins /arch/sfp_resetn]
+    connect_bd_net [get_bd_pins sfp_tx_clock]  [get_bd_pins /arch/sfp_tx_clock]
+    connect_bd_net [get_bd_pins sfp_tx_reset]  [get_bd_pins /arch/sfp_tx_reset]
+    connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins /arch/sfp_tx_resetn]
+    connect_bd_net [get_bd_pins sfp_rx_clock]  [get_bd_pins /arch/sfp_rx_clock]
+    connect_bd_net [get_bd_pins sfp_rx_reset]  [get_bd_pins /arch/sfp_rx_reset]
+    connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins /arch/sfp_rx_resetn]
     connect_bd_net [get_bd_pins design_clk] [get_bd_pins /arch/design_clk]
     connect_bd_net [get_bd_pins design_peripheral_aresetn]     [get_bd_pins /arch/design_peripheral_aresetn]
     connect_bd_net [get_bd_pins design_peripheral_areset]      [get_bd_pins /arch/design_peripheral_areset]
@@ -473,18 +405,18 @@ proc generate_broadcast {kernelc sync} {
   # If not Syncronized insert Interconnect to Sync the Clocks
       if {$sync} {
         connect_bd_intf_net [get_bd_intf_pins reciever/S_AXIS] [get_bd_intf_pins AXIS_RX]
-        connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins reciever/aclk]
-        connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever/aresetn]
+        connect_bd_net [get_bd_pins sfp_rx_clock] [get_bd_pins reciever/aclk]
+        connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever/aresetn]
       } else {
         connect_bd_net [get_bd_pins design_clk] [get_bd_pins reciever/aclk]
         connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins reciever/aresetn]
 
         create_bd_cell -type ip -vlnv xilinx.com:ip:axis_interconnect:2.1 reciever_sync
         set_property -dict [list CONFIG.NUM_MI {1} CONFIG.NUM_SI {1} CONFIG.S00_FIFO_DEPTH {2048} CONFIG.M00_FIFO_DEPTH {2048} CONFIG.S00_FIFO_MODE {0} CONFIG.M00_FIFO_MODE {0} ] [get_bd_cells reciever_sync]
-        connect_bd_net [get_bd_pins sfp_clock]  [get_bd_pins reciever_sync/ACLK]
-        connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever_sync/ARESETN]
-        connect_bd_net [get_bd_pins sfp_clock]  [get_bd_pins reciever_sync/S*_ACLK]
-        connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever_sync/S*_ARESETN]
+        connect_bd_net [get_bd_pins sfp_rx_clock]  [get_bd_pins reciever_sync/ACLK]
+        connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever_sync/ARESETN]
+        connect_bd_net [get_bd_pins sfp_rx_clock]  [get_bd_pins reciever_sync/S*_ACLK]
+        connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever_sync/S*_ARESETN]
         connect_bd_net [get_bd_pins design_clk] [get_bd_pins reciever_sync/M*_ACLK]
         connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins reciever_sync/M*_ARESETN]
 
@@ -506,14 +438,14 @@ proc generate_broadcast {kernelc sync} {
       }
 
       connect_bd_intf_net [get_bd_intf_pins transmitter/M*_AXIS] [get_bd_intf_pins AXIS_TX]
-      connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/M*_ACLK]
-      connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/M*_ARESETN]
+      connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/M*_ACLK]
+      connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/M*_ARESETN]
 
       if {$sync} {
-        connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/ACLK]
-        connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/ARESETN]
-        connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/S*_ACLK]
-        connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/S*_ARESETN]
+        connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/ACLK]
+        connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/ARESETN]
+        connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/S*_ACLK]
+        connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/S*_ARESETN]
       } else {
         connect_bd_net [get_bd_pins design_clk] [get_bd_pins transmitter/ACLK]
         connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins transmitter/ARESETN]
@@ -534,15 +466,15 @@ proc generate_roundrobin {kernelc sync} {
       set_property CONFIG.[format "M%02d" $i]_FIFO_MODE 0 [get_bd_cells reciever]
   }
 
-  connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins reciever/ACLK]
-  connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever/ARESETN]
+  connect_bd_net [get_bd_pins sfp_rx_clock] [get_bd_pins reciever/ACLK]
+  connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever/ARESETN]
 
-  connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins reciever/S*_ACLK]
-  connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever/S*_ARESETN]
+  connect_bd_net [get_bd_pins sfp_rx_clock] [get_bd_pins reciever/S*_ACLK]
+  connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever/S*_ARESETN]
 
   if {$sync} {
-    connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins reciever/M*_ACLK]
-    connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever/M*_ARESETN]
+    connect_bd_net [get_bd_pins sfp_rx_clock] [get_bd_pins reciever/M*_ACLK]
+    connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever/M*_ARESETN]
   } else {
     connect_bd_net [get_bd_pins design_clk] [get_bd_pins reciever/M*_ACLK]
     connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins reciever/M*_ARESETN]
@@ -554,8 +486,8 @@ proc generate_roundrobin {kernelc sync} {
   set_property CONFIG.CONST_VAL $kernelc [get_bd_cells roundrobin_turnover]
 
   connect_bd_net [get_bd_pins arbiter/maxClients] [get_bd_pins roundrobin_turnover/dout]
-  connect_bd_net [get_bd_pins arbiter/CLK] [get_bd_pins sfp_clock]
-  connect_bd_net [get_bd_pins arbiter/RST_N] [get_bd_pins sfp_resetn]
+  connect_bd_net [get_bd_pins arbiter/CLK] [get_bd_pins sfp_rx_clock]
+  connect_bd_net [get_bd_pins arbiter/RST_N] [get_bd_pins sfp_rx_resetn]
   connect_bd_intf_net [get_bd_intf_pins arbiter/axis_S] [get_bd_intf_pins AXIS_RX]
   connect_bd_intf_net [get_bd_intf_pins arbiter/axis_M] [get_bd_intf_pins reciever/S*_AXIS]
 
@@ -573,13 +505,13 @@ proc generate_roundrobin {kernelc sync} {
   }
 
   connect_bd_intf_net [get_bd_intf_pins transmitter/M*_AXIS] [get_bd_intf_pins AXIS_TX]
-  connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/M*_ACLK]
-  connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/M*_ARESETN]
+  connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/M*_ACLK]
+  connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/M*_ARESETN]
   if {$sync} {
-    connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/ACLK]
-    connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/ARESETN]
-    connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter/S*_ACLK]
-    connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter/S*_ARESETN]
+    connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/ACLK]
+    connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/ARESETN]
+    connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter/S*_ACLK]
+    connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter/S*_ARESETN]
   } else {
     connect_bd_net [get_bd_pins design_clk] [get_bd_pins transmitter/ACLK]
     connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins transmitter/ARESETN]
@@ -611,14 +543,14 @@ proc generate_singular {kernel PORT sync} {
 
               variable rst [get_bd_pins [lindex $pes 0]/[get_property CONFIG.ASSOCIATED_RESET $clk]]
               disconnect_bd_net [get_bd_nets -of_objects $rst]  $rst
-              connect_bd_net [get_bd_pins /arch/sfp_resetn] $rst
+              connect_bd_net [get_bd_pins /arch/sfp_rx_resetn] $rst
             } elseif {[regexp $interface_tx $interfaces]} {
               disconnect_bd_net [get_bd_nets -of_objects $clk]    $clk
-              connect_bd_net [get_bd_pins sfp_clock] $clk
+              connect_bd_net [get_bd_pins sfp_rx_clock] $clk
 
               variable rst [get_bd_pins [lindex $pes 0]/[get_property CONFIG.ASSOCIATED_RESET $clk]]
               disconnect_bd_net [get_bd_nets -of_objects $rst]  $rst
-              connect_bd_net [get_bd_pins /arch/sfp_resetn] $rst
+              connect_bd_net [get_bd_pins /arch/sfp_rx_resetn] $rst
             }
           }
       } else {
@@ -628,22 +560,22 @@ proc generate_singular {kernel PORT sync} {
 
         disconnect_bd_net [get_bd_nets -of_objects $axiclk]    $axiclk
         disconnect_bd_net [get_bd_nets -of_objects $axireset]  $axireset
-        connect_bd_net [get_bd_pins /arch/sfp_clock] $axiclk
-        connect_bd_net [get_bd_pins /arch/sfp_resetn] $axireset
+        connect_bd_net [get_bd_pins /arch/sfp_tx_clock] $axiclk
+        connect_bd_net [get_bd_pins /arch/sfp_tx_resetn] $axireset
 
         variable rst [get_bd_pins [lindex $pes 0]/[get_property CONFIG.ASSOCIATED_RESET $clks]]
         disconnect_bd_net [get_bd_nets -of_objects $clks]  $clks
-        connect_bd_net [get_bd_pins /arch/sfp_clock] $clks
+        connect_bd_net [get_bd_pins /arch/sfp_tx_clock] $clks
         disconnect_bd_net [get_bd_nets -of_objects $rst]  $rst
-        connect_bd_net [get_bd_pins /arch/sfp_resetn] $rst
+        connect_bd_net [get_bd_pins /arch/sfp_tx_resetn] $rst
       }
     } else {
       create_bd_cell -type ip -vlnv xilinx.com:ip:axis_interconnect:2.1 reciever_sync
       set_property -dict [list CONFIG.NUM_MI {1} CONFIG.NUM_SI {1} CONFIG.S00_FIFO_DEPTH {2048} CONFIG.M00_FIFO_DEPTH {2048} CONFIG.S00_FIFO_MODE {0} CONFIG.M00_FIFO_MODE {0} ] [get_bd_cells reciever_sync]
-      connect_bd_net [get_bd_pins sfp_clock]  [get_bd_pins reciever_sync/ACLK]
-      connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever_sync/ARESETN]
-      connect_bd_net [get_bd_pins sfp_clock]  [get_bd_pins reciever_sync/S*_ACLK]
-      connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins reciever_sync/S*_ARESETN]
+      connect_bd_net [get_bd_pins sfp_rx_clock]  [get_bd_pins reciever_sync/ACLK]
+      connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever_sync/ARESETN]
+      connect_bd_net [get_bd_pins sfp_rx_clock]  [get_bd_pins reciever_sync/S*_ACLK]
+      connect_bd_net [get_bd_pins sfp_rx_resetn] [get_bd_pins reciever_sync/S*_ARESETN]
       connect_bd_net [get_bd_pins design_clk] [get_bd_pins reciever_sync/M*_ACLK]
       connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins reciever_sync/M*_ARESETN]
       puts "Connecting [get_bd_intf_pins reciever_sync/M00_AXIS] to [get_bd_intf_pins [lindex $pes 0]/$interface_rx]"
@@ -656,8 +588,8 @@ proc generate_singular {kernel PORT sync} {
       connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins transmitter_sync/ARESETN]
       connect_bd_net [get_bd_pins design_clk]  [get_bd_pins transmitter_sync/S*_ACLK]
       connect_bd_net [get_bd_pins design_peripheral_aresetn] [get_bd_pins transmitter_sync/S*_ARESETN]
-      connect_bd_net [get_bd_pins sfp_clock] [get_bd_pins transmitter_sync/M*_ACLK]
-      connect_bd_net [get_bd_pins sfp_resetn] [get_bd_pins transmitter_sync/M*_ARESETN]
+      connect_bd_net [get_bd_pins sfp_tx_clock] [get_bd_pins transmitter_sync/M*_ACLK]
+      connect_bd_net [get_bd_pins sfp_tx_resetn] [get_bd_pins transmitter_sync/M*_ARESETN]
       puts "Connecting [get_bd_intf_pins transmitter_sync/S00_AXIS] to [get_bd_intf_pins [lindex $pes 0]/$interface_tx]"
       connect_bd_intf_net [get_bd_intf_pins transmitter_sync/S00_AXIS] [get_bd_intf_pins [lindex $pes 0]/$interface_tx]
       connect_bd_intf_net [get_bd_intf_pins transmitter_sync/M00_AXIS] [get_bd_intf_pins AXIS_TX]
@@ -688,17 +620,17 @@ proc connect_PEs {kernels PORT sync} {
               if {[regexp $interface_rx $interfaces]} {
                 puts "Connecting $clk to SFP-Clock  for $interface_rx"
                 disconnect_bd_net [get_bd_nets -of_objects $clk] $clk
-                connect_bd_net [get_bd_pins sfp_clock] $clk
+                connect_bd_net [get_bd_pins sfp_rx_clock] $clk
                 variable reset [get_bd_pins [lindex $pes $i]/[get_property CONFIG.ASSOCIATED_RESET $clk]]
                 disconnect_bd_net [get_bd_nets -of_objects $reset] $reset
-                connect_bd_net [get_bd_pins sfp_resetn] $reset
+                connect_bd_net [get_bd_pins sfp_rx_resetn] $reset
               } elseif {[regexp $interface_tx $interfaces]} {
                 puts "Connecting $clk to SFP-Clock for $interface_tx"
                 disconnect_bd_net [get_bd_nets -of_objects $clk] $clk
-                connect_bd_net [get_bd_pins sfp_clock] $clk
+                connect_bd_net [get_bd_pins sfp_tx_clock] $clk
                 variable reset [get_bd_pins [lindex $pes $i]/[get_property CONFIG.ASSOCIATED_RESET $clk]]
                 disconnect_bd_net [get_bd_nets -of_objects $reset] $reset
-                connect_bd_net [get_bd_pins sfp_resetn] $reset
+                connect_bd_net [get_bd_pins sfp_tx_resetn] $reset
               }
             }
           } else {
@@ -709,8 +641,8 @@ proc connect_PEs {kernels PORT sync} {
 
             disconnect_bd_net [get_bd_nets -of_objects $axiclk]    $axiclk
             disconnect_bd_net [get_bd_nets -of_objects $axireset]  $axireset
-            connect_bd_net [get_bd_pins /arch/sfp_clock] $axiclk
-            connect_bd_net [get_bd_pins /arch/sfp_resetn] $axireset
+            connect_bd_net [get_bd_pins /arch/sfp_rx_clock] $axiclk
+            connect_bd_net [get_bd_pins /arch/sfp_rx_resetn] $axireset
 
             variable rst [get_bd_pins [lindex $pes $i]/[get_property CONFIG.ASSOCIATED_RESET $clks]]
             puts $rst
@@ -718,9 +650,9 @@ proc connect_PEs {kernels PORT sync} {
             puts $clks
             puts [get_property CONFIG.ASSOCIATED_RESET $clks]
             disconnect_bd_net [get_bd_nets -of_objects $clks]  $clks
-            connect_bd_net [get_bd_pins /arch/sfp_clock] $clks
+            connect_bd_net [get_bd_pins /arch/sfp_tx_clock] $clks
             disconnect_bd_net [get_bd_nets -of_objects $rst]  $rst
-            connect_bd_net [get_bd_pins /arch/sfp_resetn] $rst
+            connect_bd_net [get_bd_pins /arch/sfp_tx_resetn] $rst
           }
         }
         variable counter [expr {$counter+1}]
