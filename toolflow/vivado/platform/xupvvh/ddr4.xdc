@@ -18,8 +18,6 @@
 ### Constraints for 2x16GB RDIMMs ###
 ###
 
-#set_property C_ECC_ONOFF_RESET_VALUE 0 [get_cells system_i/memory/mig]
-
 ##############################################
 ##########      Memory Clocks       ##########
 ##############################################
@@ -28,8 +26,8 @@ set_property IOSTANDARD DIFF_SSTL12_DCI [get_ports ddr4_sys_clk_1_clk_n]
 set_property ODT RTT_48 [get_ports ddr4_sys_clk_1_clk_p]
 set_property PACKAGE_PIN G35   [get_ports ddr4_sys_clk_1_clk_p]
 
-set_clock_groups -group [get_clocks ddr4_sys_clk_1_clk_p -include_generated_clocks] -asynchronous
-set_clock_groups -group [get_clocks ddr4_sys_clk_1_p -include_generated_clocks] -asynchronous
+#set_clock_groups -group [get_clocks ddr4_sys_clk_1_clk_p -include_generated_clocks] -asynchronous
+#set_clock_groups -group [get_clocks ddr4_sys_clk_1_p -include_generated_clocks] -asynchronous
 
 ##############################################
 ##########   DDR4 Pin Properties    ##########

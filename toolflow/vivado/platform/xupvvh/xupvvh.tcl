@@ -121,7 +121,7 @@ namespace eval platform {
     set pcie_properties [list \
       CONFIG.functional_mode {AXI_Bridge} \
       CONFIG.mode_selection {Advanced} \
-      CONFIG.pcie_blk_locn {PCIE4C_X1Y0} \
+      CONFIG.pcie_blk_locn {PCIE4C_X1Y1} \
       CONFIG.pl_link_cap_max_link_width {X16} \
       CONFIG.pl_link_cap_max_link_speed {8.0_GT/s} \
       CONFIG.axi_addr_width {64} \

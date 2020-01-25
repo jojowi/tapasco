@@ -285,6 +285,7 @@
                         CONFIG.USE_RESET {true} \
                         CONFIG.RESET_TYPE {ACTIVE_LOW} \
                         CONFIG.RESET_PORT {resetn} \
+                        CONFIG.PRIM_SOURCE {No_buffer} \
                         ] $design_clk_wiz
     }
 
