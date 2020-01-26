@@ -22,3 +22,8 @@ create_clock -period 10.000 -name refclk_100 [get_ports pcie_sys_clk_clk_p]
 ##############################################
 set_property IOSTANDARD LVCMOS18 [get_ports sys_rst_l]
 set_property PACKAGE_PIN F18 [get_ports sys_rst_l]
+
+create_pblock pblock_axi_pcie
+resize_pblock pblock_axi_pcie -add SLR0
+set_property IS_SOFT [get_pblocks pblock_axi_pcie]
+add_cells_to_pblock pblock_axi_pcie [get_cells [list system_i/host/axi_pcie3_0]]
