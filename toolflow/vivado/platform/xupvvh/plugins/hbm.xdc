@@ -52,6 +52,26 @@ resize_pblock pblock_hbm_ic_12_15 -add CLOCKREGION_X3Y0:CLOCKREGION_X3Y11
 set_property IS_SOFT [get_pblocks pblock_hbm_ic_12_15]
 add_cells_to_pblock pblock_hbm_ic_12_15 [get_cells [list system_i/hbm/smartconnect_12 system_i/hbm/smartconnect_13 system_i/hbm/smartconnect_14 system_i/hbm/smartconnect_15]]
 
+create_pblock pblock_hbm_ic_16_19
+resize_pblock pblock_hbm_ic_16_19 -add CLOCKREGION_X4Y0:CLOCKREGION_X4Y11
+set_property IS_SOFT [get_pblocks pblock_hbm_ic_16_19]
+add_cells_to_pblock pblock_hbm_ic_16_19 [get_cells [list system_i/hbm/smartconnect_16 system_i/hbm/smartconnect_17 system_i/hbm/smartconnect_18 system_i/hbm/smartconnect_19]]
+
+create_pblock pblock_hbm_ic_20_23
+resize_pblock pblock_hbm_ic_20_23 -add CLOCKREGION_X5Y0:CLOCKREGION_X5Y11
+set_property IS_SOFT [get_pblocks pblock_hbm_ic_20_23]
+add_cells_to_pblock pblock_hbm_ic_20_23 [get_cells [list system_i/hbm/smartconnect_20 system_i/hbm/smartconnect_21 system_i/hbm/smartconnect_22 system_i/hbm/smartconnect_23]]
+
+create_pblock pblock_hbm_ic_24_27
+resize_pblock pblock_hbm_ic_24_27 -add CLOCKREGION_X6Y0:CLOCKREGION_X6Y11
+set_property IS_SOFT [get_pblocks pblock_hbm_ic_24_27]
+add_cells_to_pblock pblock_hbm_ic_24_27 [get_cells [list system_i/hbm/smartconnect_24 system_i/hbm/smartconnect_25 system_i/hbm/smartconnect_26 system_i/hbm/smartconnect_27]]
+
+create_pblock pblock_hbm_ic_28_31
+resize_pblock pblock_hbm_ic_28_31 -add CLOCKREGION_X7Y0:CLOCKREGION_X7Y11
+set_property IS_SOFT [get_pblocks pblock_hbm_ic_28_31]
+add_cells_to_pblock pblock_hbm_ic_28_31 [get_cells [list system_i/hbm/smartconnect_28 system_i/hbm/smartconnect_29 system_i/hbm/smartconnect_30 system_i/hbm/smartconnect_31]]
+
 #get_property CLOCK_DEDICATED_ROUTE [get_nets system_i/hbm/clocking_0/clk_wiz/inst/clk_out1]
 #get_property CLOCK_DEDICATED_ROUTE [get_nets system_i/hbm/clocking_0/clk_wiz/inst/clk_out2]
 #get_property CLOCK_DEDICATED_ROUTE [get_nets system_i/hbm/clocking_0/clk_wiz/inst/clk_out3]
