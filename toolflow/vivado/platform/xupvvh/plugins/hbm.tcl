@@ -174,15 +174,17 @@ namespace eval hbm {
       set clocking_0 [create_clocking "clocking_0" [get_bd_intf_ports /hbm_ref_clk_0]]
       connect_clocking $clocking_0 $hbm 0 [expr min($numInterfaces,16)]
       connect_bd_net [get_bd_pins $clocking_0/hbm_ref_clk] [get_bd_pins $hbm/HBM_REF_CLK_0]
-      set bufg [tapasco::ip::create_util_buf bufg_apb_pclk]
-      set_property -dict [ list CONFIG.C_BUF_TYPE {BUFG}  ] $bufg
-      connect_bd_net [get_bd_pins $clocking_0/hbm_ref_clk] [get_bd_pins $bufg/BUFG_I]
-      connect_bd_net [get_bd_pins $bufg/BUFG_O] [get_bd_pins $hbm/APB_0_PCLK]
+
+      connect_bd_net [get_bd_pins $clocking_0/hbm_ref_clk] [get_bd_pins $hbm/APB_0_PCLK]
       connect_bd_net [get_bd_pins /host/axi_pcie3_0/user_lnk_up] [get_bd_pins $hbm/APB_0_PRESET_N]
 
       if {$bothStacks} {
         set clocking_1 [create_clocking "clocking_1" [get_bd_intf_ports /hbm_ref_clk_1]]
         connect_clocking $clocking_1 $hbm 16 [expr $numInterfaces - 16]
+        connect_bd_net [get_bd_pins $clocking_1/hbm_ref_clk] [get_bd_pins $hbm/HBM_REF_CLK_1]
+
+        connect_bd_net [get_bd_pins $clocking_1/hbm_ref_clk] [get_bd_pins $hbm/APB_1_PCLK]
+        connect_bd_net [get_bd_pins /host/axi_pcie3_0/user_lnk_up] [get_bd_pins $hbm/APB_1_PRESET_N]
       }
 
       # disconnect mem_interconnect
