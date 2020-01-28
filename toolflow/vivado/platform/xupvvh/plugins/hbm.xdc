@@ -88,3 +88,5 @@ add_cells_to_pblock pblock_hbm_ic_28_31 [get_cells [list system_i/hbm/smartconne
 #resize_pblock pblock_pcie4c_ip_i_1 -add CLOCKREGION_X4Y0:CLOCKREGION_X7Y3
 #add_cells_to_pblock pblock_pcie4c_ip_i_1 [get_cells system_i/host/axi_pcie3_0/inst/pcie4c_ip_i]
 #set_property USER_SLR_ASSIGNMENT in_ic_group [get_cells system_i/host/in_ic]
+
+set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_nets system_i/hbm/clocking_0/ibuf/U0/IBUF_OUT[0]]

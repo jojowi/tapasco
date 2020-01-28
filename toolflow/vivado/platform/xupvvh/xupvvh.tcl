@@ -86,7 +86,12 @@ namespace eval platform {
 
     # create memory control AXI slave
     set s_axi_mem_ctrl [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_MEM_CTRL]
-    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] $s_axi_mem_ctrl
+
+    set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_mem_ctrl]
+    set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice
+
+    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] [get_bd_intf_pins $regslice/M_AXI]
+    connect_bd_intf_net [get_bd_intf_pins $regslice/S_AXI] $s_axi_mem_ctrl
 
     set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
 
