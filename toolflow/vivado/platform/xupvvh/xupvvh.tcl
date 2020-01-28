@@ -92,6 +92,8 @@ namespace eval platform {
 
     connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] [get_bd_intf_pins $regslice/M_AXI]
     connect_bd_intf_net [get_bd_intf_pins $regslice/S_AXI] $s_axi_mem_ctrl
+    connect_bd_net [get_bd_pins mem_clk] [get_bd_pins $regslice/aclk]
+    connect_bd_net [get_bd_pins mem_interconnect_aresetn] [get_bd_pins $regslice/aresetn]
 
     set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
 
