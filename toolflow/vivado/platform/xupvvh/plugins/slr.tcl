@@ -10,7 +10,9 @@ namespace eval singleslr {
         foreach ID $IDs {
           set core [find_ID $ID]
           set PEs [get_bd_cells /arch/target_ip_[format %02d $core]_*]
-          puts $constraints_file [format {set_property USER_SLR_ASSIGNMENT slr_group_%s [get_cells [list %s]]} $ID $PEs]
+          foreach PE $PEs {
+            puts $constraints_file [format {set_property USER_SLR_ASSIGNMENT slr_group_%s [get_cells system_i%s]} $ID $PE]
+          }
         }
       }
       close $constraints_file
