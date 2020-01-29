@@ -1,21 +1,15 @@
 if {[tapasco::is_feature_enabled "HBM"]} {
   proc create_custom_subsystem_hbm {{args {}}} {
-    set interfaces  {}
-    set hbm [tapasco::get_feature "HBM"]
+    set hbmInterfaces [hbm::get_hbm_interfaces]
 
-    dict with hbm {
-      set hbmInterfaces [lindex $interfaces 0]
-
-      hbm::validate_pe_configuration $hbmInterfaces
-      set numInterfaces [llength $hbmInterfaces]
-      puts $numInterfaces
-      puts [lindex $hbmInterfaces 0]
-      set bothStacks [expr ($numInterfaces > 16)]
-      puts "Refclks"
-      hbm::create_refclk_ports $bothStacks
-      puts "core"
-      hbm::generate_hbm_core $hbmInterfaces
-    }
+    hbm::validate_pe_configuration $hbmInterfaces
+    set numInterfaces [llength $hbmInterfaces]
+    set bothStacks [expr ($numInterfaces > 16)]
+    puts "Refclks"
+    hbm::create_refclk_ports $bothStacks
+    puts "core"
+    hbm::generate_hbm_core $hbmInterfaces
+    
 
   }
 }
@@ -25,12 +19,33 @@ namespace eval hbm {
 
   proc even x {expr {($x % 2) == 0}}
 
+  proc find_ID {input} {
+    set composition [tapasco::get_composition]
+    for {set o 0} {$o < [llength $composition] -1} {incr o} {
+      if {[regexp ".*:$input:.*" [dict get $composition $o vlnv]]} {
+        return $o
+      }
+    }
+    return -1
+  }
+
   proc get_hbm_interfaces {} {
-    set interfaces  {}
+    set hbmInterfaces [list]
+
     set hbm [tapasco::get_feature "HBM"]
 
-    dict with hbm {
-      set hbmInterfaces [lindex $interfaces 0]
+    set value [dict values [dict remove $hbm enabled]]
+
+    foreach kernel $value {
+      dict with kernel {
+        set core [find_ID $ID]
+        set PEs [lrange [get_bd_cells /arch/target_ip_[format %02d $core]_*] 0 $Count-1]
+        foreach PE $PEs {
+          foreach interface $Interfaces {
+            set hbmInterfaces [lappend hbmInterfaces [format "%s/%s" $PE $interface]]
+          }
+        }
+      }
     }
     return $hbmInterfaces
   }
@@ -236,15 +251,11 @@ namespace eval hbm {
 
   proc addressmap {{args {}}} {
     if {[tapasco::is_feature_enabled "HBM"]} {
-      set interfaces  {}
-      set hbm [tapasco::get_feature "HBM"]
-
-      dict with hbm {
-        set hbmInterfaces [lindex $interfaces 0]
-        for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
-          set args [lappend args M_AXI_HBM_${i} [list 0 0 -1 ""]]
-        }
+      set hbmInterfaces [get_hbm_interfaces]
+      for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
+        set args [lappend args M_AXI_HBM_${i} [list 0 0 -1 ""]]
       }
+      
     }
     save_bd_design
     return $args
