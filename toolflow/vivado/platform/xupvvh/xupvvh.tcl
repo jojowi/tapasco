@@ -183,12 +183,15 @@ namespace eval platform {
   proc insert_regslice {name master slave clock reset} {
     set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_${name}]
     set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}]
-
+    puts $master
     delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins $master]]
     connect_bd_intf_net [get_bd_intf_pins $master] [get_bd_intf_pins $regslice/S_AXI]
+    puts $slave
     connect_bd_intf_net [get_bd_intf_pins $regslice/M_AXI] [get_bd_intf_pins $slave]
-    connect_bd_net $clock [get_bd_pins $regslice/aclk]
-    connect_bd_net $reset [get_bd_pins $regslice/aresetn]
+    puts $clock
+    connect_bd_net [get_bd_pins $clock] [get_bd_pins $regslice/aclk]
+    puts $reset
+    connect_bd_net [get_bd_pins $reset} [get_bd_pins $regslice/aresetn]
   }
 
   proc create_constraints {} {
@@ -205,6 +208,7 @@ namespace eval platform {
 
   proc insert_regslices {} {
     insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn"
+    save_bd_design
   }
 
   namespace eval xupvvh {
