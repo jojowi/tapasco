@@ -180,6 +180,17 @@ namespace eval platform {
     return $pcie_core
   }
 
+  proc insert_regslice {name master slave clock reset} {
+    set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_${name}]
+    set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}]
+
+    delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins $master]]
+    connect_bd_intf_net [get_bd_intf_pins $master] [get_bd_intf_pins $regslice/S_AXI]
+    connect_bd_intf_net [get_bd_intf_pins $regslice/M_AXI] [get_bd_intf_pins $slave]
+    connect_bd_net $clock [get_bd_pins $regslice/aclk]
+    connect_bd_net $reset [get_bd_pins $regslice/aresetn]
+  }
+
   proc create_constraints {} {
     set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/board.xdc"
     read_xdc $constraints_fn
@@ -190,6 +201,10 @@ namespace eval platform {
     set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/ddr4.xdc"
     read_xdc $constraints_fn
     set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
+  }
+
+  proc insert_regslices {} {
+    insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn"
   }
 
   namespace eval xupvvh {
@@ -203,5 +218,7 @@ namespace eval platform {
 
 
   tapasco::register_plugin "platform::xupvvh::addressmap" "post-address-map"
+
+  tapasco::register_plugin "platform::insert_regslices" "post-platform"
 
 }

@@ -233,7 +233,7 @@ namespace eval hbm {
         connect_bd_net [get_bd_pins design_clk] [get_bd_pins $converter/aclk] [get_bd_pins $regslice_pre/aclk]
         connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins $regslice_pre/aresetn]
         connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ACLK] [get_bd_pins $converter/aclk1] [get_bd_pins $regslice_post/aclk]
-        connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ARESET_N] [get_bd_pins $regslice/aresetn]
+        connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ARESET_N] [get_bd_pins $regslice_post/aresetn]
 
         assign_bd_address [get_bd_addr_segs $hbm/SAXI_${hbm_index}/HBM_MEM${hbm_index}]
       }
