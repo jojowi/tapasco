@@ -35,22 +35,22 @@ set_property C_USER_SCAN_CHAIN 1 [get_debug_cores dbg_hub]
 create_pblock pblock_hbm_ic_0_3
 resize_pblock pblock_hbm_ic_0_3 -add CLOCKREGION_X0Y0:CLOCKREGION_X0Y11
 set_property IS_SOFT [get_pblocks pblock_hbm_ic_0_3]
-add_cells_to_pblock pblock_hbm_ic_0_3 [get_cells [list system_i/hbm/smartconnect_0 system_i/hbm/smartconnect_1 system_i/hbm/smartconnect_2 system_i/hbm/smartconnect_3]]
+add_cells_to_pblock pblock_hbm_ic_0_3 [get_cells [list system_i/hbm/smartconnect_0 system_i/hbm/smartconnect_1 system_i/hbm/smartconnect_2 system_i/hbm/smartconnect_3 system_i/arch/target_ip_00_000 system_i/arch/target_ip_00_001 system_i/arch/target_ip_00_002 system_i/arch/target_ip_00_003]]
 
 create_pblock pblock_hbm_ic_4_7
 resize_pblock pblock_hbm_ic_4_7 -add CLOCKREGION_X1Y0:CLOCKREGION_X1Y11
 set_property IS_SOFT [get_pblocks pblock_hbm_ic_4_7]
-add_cells_to_pblock pblock_hbm_ic_4_7 [get_cells [list system_i/hbm/smartconnect_4 system_i/hbm/smartconnect_5 system_i/hbm/smartconnect_6 system_i/hbm/smartconnect_7]]
+add_cells_to_pblock pblock_hbm_ic_4_7 [get_cells [list system_i/hbm/smartconnect_4 system_i/hbm/smartconnect_5 system_i/hbm/smartconnect_6 system_i/hbm/smartconnect_7 system_i/arch/target_ip_00_004 system_i/arch/target_ip_00_005 system_i/arch/target_ip_00_006 system_i/arch/target_ip_00_007]]
 
 create_pblock pblock_hbm_ic_8_11
 resize_pblock pblock_hbm_ic_8_11 -add CLOCKREGION_X2Y0:CLOCKREGION_X2Y11
 set_property IS_SOFT [get_pblocks pblock_hbm_ic_8_11]
-add_cells_to_pblock pblock_hbm_ic_8_11 [get_cells [list system_i/hbm/smartconnect_8 system_i/hbm/smartconnect_9 system_i/hbm/smartconnect_10 system_i/hbm/smartconnect_11]]
+add_cells_to_pblock pblock_hbm_ic_8_11 [get_cells [list system_i/hbm/smartconnect_8 system_i/hbm/smartconnect_9 system_i/hbm/smartconnect_10 system_i/hbm/smartconnect_11 system_i/arch/target_ip_00_008 system_i/arch/target_ip_00_009 system_i/arch/target_ip_00_010 system_i/arch/target_ip_00_011]]
 
 create_pblock pblock_hbm_ic_12_15
 resize_pblock pblock_hbm_ic_12_15 -add CLOCKREGION_X3Y0:CLOCKREGION_X3Y11
 set_property IS_SOFT [get_pblocks pblock_hbm_ic_12_15]
-add_cells_to_pblock pblock_hbm_ic_12_15 [get_cells [list system_i/hbm/smartconnect_12 system_i/hbm/smartconnect_13 system_i/hbm/smartconnect_14 system_i/hbm/smartconnect_15]]
+add_cells_to_pblock pblock_hbm_ic_12_15 [get_cells [list system_i/hbm/smartconnect_12 system_i/hbm/smartconnect_13 system_i/hbm/smartconnect_14 system_i/hbm/smartconnect_15 system_i/arch/target_ip_00_012 system_i/arch/target_ip_00_013 system_i/arch/target_ip_00_014 system_i/arch/target_ip_00_015]]
 
 create_pblock pblock_hbm_ic_16_19
 resize_pblock pblock_hbm_ic_16_19 -add CLOCKREGION_X4Y0:CLOCKREGION_X4Y11
