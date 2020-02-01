@@ -180,8 +180,8 @@ namespace eval platform {
     return $pcie_core
   }
 
-  proc insert_regslice {name master slave clock reset} {
-    set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_${name}]
+  proc insert_regslice {name master slave clock reset subsystem} {
+    set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 $subsystem/regslice_${name}]
     set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice
     delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins $master]]
     connect_bd_intf_net [get_bd_intf_pins $master] [get_bd_intf_pins $regslice/S_AXI]
@@ -203,7 +203,12 @@ namespace eval platform {
   }
 
   proc insert_regslices {} {
-    insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn"
+    #insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory"
+    insert_regslice "host_memctrl" "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" ""
+    insert_regslice "arch_mig" "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
+    insert_regslice "host_dma" "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
+    insert_regslice "dma_host" "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
+    insert_regslice "host_arch" "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
     save_bd_design
   }
 
