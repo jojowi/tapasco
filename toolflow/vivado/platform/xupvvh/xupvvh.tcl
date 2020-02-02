@@ -210,10 +210,13 @@ namespace eval platform {
     insert_regslice "dma_host" "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
     insert_regslice "host_arch" "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
 
-    set masters [tapasco::get_aximm_interfaces [get_bd_cells /arch/target_ip_*]]
-    foreach master $masters {
-      set slave [get_bd_intf_pins -filter {MODE == Slave} -of_objects [get_bd_intf_nets -of_objects $master]]
-      insert_regslice $master $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch"
+    set ips [get_bd_cells /arch/target_ip_*]
+    foreach ip $ips {
+      set masters [tapasco::get_aximm_interfaces $ip]
+      foreach master $masters {
+        set slave [get_bd_intf_pins -filter {MODE == Slave} -of_objects [get_bd_intf_nets -of_objects $master]]
+        insert_regslice [get_property NAME $ip] $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch"
+      }
     }
 
     save_bd_design
