@@ -30,6 +30,7 @@ public:
     tapasco->info(&info);
     dma_addr = info.base.platform[PLATFORM_COMPONENT_DMA0];
     intc_addr = info.base.platform[PLATFORM_COMPONENT_INTC0];
+    ecc_addr = 0x10040000;
 
     uint64_t accumulated_delay = 199;
     platform_write_ctl(tapasco->platform_device(), dma_addr + 80,
@@ -103,6 +104,9 @@ protected:
                       &dma.cycles_between_set_write, PLATFORM_CTL_FLAGS_RAW);
     ++dma.cycles_between_set_read;  // Register contains num requests - 1
     ++dma.cycles_between_set_write; // Register contains num requests - 1
+
+    platform_read_ctl(tapasco.platform_device(), ecc_addr + 0, sizeof(ecc.status), &ecc.status, PLATFORM_CTL_FLAGS_RAW);
+    platform_read_ctl(tapasco.platform_device(), ecc_addr + 8, sizeof(ecc.enabled), &ecc.enabled, PLATFORM_CTL_FLAGS_RAW);
 
     // Update Interrupt data
     uint32_t base_addr = intc_addr;
@@ -182,8 +186,14 @@ private:
     uint32_t sentInterrupts;
   };
 
+  struct ecc_regs {
+    uint32_t enabled;
+    uint32_t status;
+  };
+
   dma_regs dma;
   intr_regs intr;
+  ecc_regs ecc;
 
   const int32_t total_interrupts = 131;
 
@@ -224,6 +234,7 @@ private:
     mvprintw(start_row++, start_col,
              "ms averaged over last %ld write request(s): %f / %f MiB",
              dma.cycles_between_set_write, transfer_ms, transfer_mib);
+    mvprintw(start_row++, start_col, "ECC Enabled: %d Status: %d", ecc.enabled, ecc.status);
   }
 
   void render_msix(int start_row, int start_col) {
@@ -254,6 +265,7 @@ private:
   Tapasco &tapasco;
   platform_ctl_addr_t dma_addr;
   platform_ctl_addr_t intc_addr;
+  platform_ctl_addr_t ecc_addr;
 };
 
 #endif
