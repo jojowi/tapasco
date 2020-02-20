@@ -70,8 +70,7 @@ namespace eval platform {
     puts "Copying MIG configuration to project directory"
     file copy "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/MTA18ADF2G72PZ-2G3.csv" $part_file
 
-    set properties 
-    set_property -dict [list CONFIG.C0.DDR4_TimePeriod {833} \
+    set properties  [list CONFIG.C0.DDR4_TimePeriod {833} \
       CONFIG.C0.DDR4_InputClockPeriod {9996} \
       CONFIG.C0.DDR4_CLKOUT0_DIVIDE {5} \
       CONFIG.C0.DDR4_MemoryType {RDIMMs} \
@@ -90,18 +89,36 @@ namespace eval platform {
       lappend properties CONFIG.C0.DDR4_Ordering {Strict}
     }
 
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchme"]} {
-      set feature [tapasco::get_feature "ddrArbitrationSchme"]
-      dict with feature {
-        lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme $value
-      }
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeTDM"]} {
+      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {TDM}
     }
 
-    if {[tapasco::is_feature_enabled "ddrAddressMap"]} {
-      set feature [tapasco::get_feature "ddrAddressMap"]
-      dict with feature {
-        lappend properties CONFIG.C0.DDR4_Mem_Add_Map $value
-      }
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeROUND_ROBIN"]} {
+      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {ROUND_ROBIN}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeRD_PRI_REG_STARVE_LIMIT"]} {
+      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {RD_PRI_REG_STARVE_LIMIT}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeWRITE_PRIORITY_REG"]} {
+      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {WRITE_PRIORITY_REG}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeWRITE_PRIORITY"]} {
+      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {WRITE_PRIORITY}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrAdressMapRBC"]} {
+      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {ROW_BANK_COLUMN}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrAdressMapBRC"]} {
+      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {BANK_ROW_COLUMN}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrAdressMapRCBI"]} {
+      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {ROW_COLUMN_BANK_INTLV}
     }
 
     set_property -dict $properties $mig
