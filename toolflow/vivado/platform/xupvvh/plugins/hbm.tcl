@@ -101,11 +101,22 @@ namespace eval hbm {
         CONFIG.USER_HBM_DENSITY {8GB} \
     }
 
+    for {set i 0} {$i < $maxSlaves} {incr i} {
+      if ([even $i]) {
+        set mc [format %s [expr {$i / 2}]]
+        lappend hbm_properties CONFIG.USER_MC${mc}_ECC_BYPASS [tapasco::is_feature_enabled "hbmECCBypass"]
+        lappend hbm_properties CONFIG.USER_MC${mc}_ECC_CORRECTION [tapasco::is_feature_enabled "hbmECCCorrection"]
+        lappend hbm_properties CONFIG.USER_MC${mc}_EN_DATA_MASK [tapasco::is_feature_enabled "hbmDataMask"]
+        lappend hbm_properties CONFIG.USER_MC${mc}_REORDER_EN [tapasco::is_feature_enabled "hbmReorder"]
+        lappend hbm_properties CONFIG.USER_MC${mc}_REORDER_QUEUE_EN [tapasco::is_feature_enabled "hbmReorderQueue"]
+        lappend hbm_properties CONFIG.USER_MC${mc}_BG_INTERLEAVE_EN [tapasco::is_feature_enabled "hbmBGInterleave"]
+      }
+    }
+
     for {set i $numInterfaces} {$i < $maxSlaves} {incr i} {
       if ([even $i]) {
         set mc [format %02s [expr {$i / 2}]]
         lappend hbm_properties CONFIG.USER_MC_ENABLE_${mc} {false}
-        lappend hbm_properties CONFIG.USER_MC${mc}_ECC_BYPASS {true}
       }
       set saxi [format %02s $i]
       lappend hbm_properties CONFIG.USER_SAXI_${saxi} {false}
@@ -139,7 +150,8 @@ namespace eval hbm {
     set clk_wiz [tapasco::ip::create_clk_wiz clk_wiz]
     set_property -dict [list CONFIG.PRIM_SOURCE {No_buffer} CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT2_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT3_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT4_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT5_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT6_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT7_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT2_USED {true} CONFIG.CLKOUT3_USED {true} CONFIG.CLKOUT4_USED {true} CONFIG.CLKOUT5_USED {true} CONFIG.CLKOUT6_USED {true} CONFIG.CLKOUT7_USED {true} CONFIG.RESET_TYPE {ACTIVE_LOW} CONFIG.NUM_OUT_CLKS {7} CONFIG.RESET_PORT {resetn}] $clk_wiz
 
-    connect_bd_net [get_bd_pins $ibuf/IBUF_OUT] [get_bd_pins $clk_wiz/clk_in1] $hbm_ref_clk
+    connect_bd_net [get_bd_pins $ibuf/IBUF_OUT] $hbm_ref_clk
+    connect_bd_net [get_bd_pins $ibuf/IBUF_OUT] [get_bd_pins $clk_wiz/clk_in1]
 
     connect_bd_net $mem_peripheral_aresetn [get_bd_pins $clk_wiz/resetn]
 
@@ -209,31 +221,41 @@ namespace eval hbm {
       for {set i 0} {$i < $numInterfaces} {incr i} {
         variable master [lindex $hbmInterfaces $i]
 
-        set regslice_pre [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_pre_${i}]
-        set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_pre
-
-        set converter [create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 smartconnect_${i}]
-        set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_CLKS {2} CONFIG.HAS_ARESETN {0}] $converter
-
-        set regslice_post [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_post_${i}]
-        set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_post
-
-        #disconnect_bd_intf_net [get_bd_intf_nets -of_objects $master] $master
-        #set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells /host/out_ic]]
-        #set num_mi [expr "$num_mi_old - 1"]
-        #set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells /host/out_ic]
-
         set pin [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /arch/M_AXI_HBM_${i}]
         connect_bd_intf_net $pin $master
-        connect_bd_intf_net $pin [get_bd_intf_pins $regslice_pre/S_AXI]
-        connect_bd_intf_net [get_bd_intf_pins $regslice_pre/M_AXI] [get_bd_intf_pins $converter/S00_AXI]
+
         set hbm_index [format %02s $i]
-        connect_bd_intf_net [get_bd_intf_pins $converter/M00_AXI] [get_bd_intf_pins $regslice_post/S_AXI]
-        connect_bd_intf_net [get_bd_intf_pins $regslice_post/M_AXI] [get_bd_intf_pins $hbm/SAXI_${hbm_index}]
-        connect_bd_net [get_bd_pins design_clk] [get_bd_pins $converter/aclk] [get_bd_pins $regslice_pre/aclk]
-        connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins $regslice_pre/aresetn]
-        connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ACLK] [get_bd_pins $converter/aclk1] [get_bd_pins $regslice_post/aclk]
-        connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ARESET_N] [get_bd_pins $regslice_post/aresetn]
+
+        set converter [create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 smartconnect_${i}]
+        set_property -dict [list CONFIG.NUM_SI {2} CONFIG.NUM_CLKS {2} CONFIG.HAS_ARESETN {0}] $converter
+        
+        connect_bd_net [get_bd_pins design_clk] [get_bd_pins $converter/aclk]
+        connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ACLK] [get_bd_pins $converter/aclk1]
+
+        if {[tapasco::is_feature_enabled "regsliceHBMPre"]} {
+          set regslice_pre [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_pre_${i}]
+          set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_pre
+
+          connect_bd_intf_net $pin [get_bd_intf_pins $regslice_pre/S_AXI]
+          connect_bd_intf_net [get_bd_intf_pins $regslice_pre/M_AXI] [get_bd_intf_pins $converter/S00_AXI]
+
+          connect_bd_net [get_bd_pins design_clk] [get_bd_pins $regslice_pre/aclk]
+          connect_bd_net [get_bd_pins design_interconnect_aresetn] [get_bd_pins $regslice_pre/aresetn]
+        } else {
+          connect_bd_intf_net $pin [get_bd_intf_pins $converter/S00_AXI]
+        }
+
+        if {[tapasco::is_feature_enabled "regsliceHBMPost"]} {
+          set regslice_post [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_post_${i}]
+          set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_post
+
+          connect_bd_intf_net [get_bd_intf_pins $converter/M00_AXI] [get_bd_intf_pins $regslice_post/S_AXI]
+          connect_bd_intf_net [get_bd_intf_pins $regslice_post/M_AXI] [get_bd_intf_pins $hbm/SAXI_${hbm_index}]
+          connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ACLK] [get_bd_pins $regslice_post/aclk]
+          connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ARESET_N] [get_bd_pins $regslice_post/aresetn]
+        } else {
+          connect_bd_intf_net [get_bd_intf_pins $converter/M00_AXI] [get_bd_intf_pins $hbm/SAXI_${hbm_index}]
+        }
 
         assign_bd_address [get_bd_addr_segs $hbm/SAXI_${hbm_index}/HBM_MEM${hbm_index}]
       }

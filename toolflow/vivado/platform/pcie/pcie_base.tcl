@@ -226,68 +226,17 @@
     # connect external DDR clk/rst output ports
     connect_bd_net $ddr_clk $ddr_aclk
 
-    set device_type [get_property ARCHITECTURE [get_parts -of_objects [current_project]]]
-    if {[tapasco::get_design_frequency] >= 300 && ($device_type == "virtexuplus" || $device_type == "virtexuplusHBM")} {
-      puts "Design Frequency is at least 300MHz on UScale+ -> using alternative clocking wizard"
-      set inst [current_bd_instance .]
-      set design_clk_wiz [create_bd_cell -type hier design_clk_wiz]
-      current_bd_instance $design_clk_wiz
-      set clk_in1 [create_bd_pin -dir I -type clk clk_in1]
-      set resetn [create_bd_pin -dir I -type rst resetn]
-      set design_clk2 [create_bd_pin -dir O -type clk design_clk]
-      set locked [create_bd_pin -dir O locked]
-      set wiz [tapasco::ip::create_clk_wiz design_clk_wiz]
-      set_property -dict [list CONFIG.CLK_OUT1_PORT {design_clk} \
-                        CONFIG.USE_SAFE_CLOCK_STARTUP {false} \
-                        CONFIG.CLKOUT1_REQUESTED_OUT_FREQ [tapasco::get_design_frequency] \
-                        CONFIG.USE_LOCKED {true} \
-                        CONFIG.USE_RESET {true} \
-                        CONFIG.RESET_TYPE {ACTIVE_LOW} \
-                        CONFIG.RESET_PORT {resetn} \
-                        CONFIG.CLKOUT1_DRIVES {No_buffer} \
-                        CONFIG.PRIM_SOURCE {No_buffer} \
-                        ] $wiz
-      set const1 [tapasco::ip::create_constant const1 1 1]
-      set clkout1_buf_en [tapasco::ip::create_util_buf clkout1_buf_en]
-      set_property -dict [list CONFIG.C_BUF_TYPE {BUFGCE}] $clkout1_buf_en
-      set clkout1_buf [tapasco::ip::create_util_buf clkout1_buf]
-      set_property -dict [list CONFIG.C_BUF_TYPE {BUFGCE}] $clkout1_buf
-      set clkout1_buf_uplus [tapasco::ip::create_util_buf clkout1_buf_uplus]
-      set_property -dict [list CONFIG.C_BUF_TYPE {BUFGCE}] $clkout1_buf_uplus
-      set shift_register [create_bd_cell -type ip -vlnv xilinx.com:ip:c_shift_ram:12.0 shift_register]
-      set_property -dict [list CONFIG.Width.VALUE_SRC USER] $shift_register
-      set_property -dict [list CONFIG.ShiftRegType {Fixed_Length} CONFIG.CE {true} CONFIG.Width {1} CONFIG.Depth {8} CONFIG.DefaultData {0} CONFIG.AsyncInitVal {0} CONFIG.SCLR {true} CONFIG.SyncInitVal {0} CONFIG.CEPriority {Sync_Overrides_CE}] $shift_register
-      connect_bd_net $clk_in1 [get_bd_pins $wiz/clk_in1]
-      connect_bd_net $resetn [get_bd_pins $wiz/resetn]
-      connect_bd_net $locked [get_bd_pins $wiz/locked]
-      connect_bd_net [get_bd_pins $wiz/design_clk] [get_bd_pins $clkout1_buf_en/BUFGCE_I] [get_bd_pins $clkout1_buf_uplus/BUFGCE_I]
-      connect_bd_net [get_bd_pins $const1/dout] [get_bd_pins $clkout1_buf_en/BUFGCE_CE] [get_bd_pins $clkout1_buf_uplus/BUFGCE_CE]
-      connect_bd_net [get_bd_pins $clkout1_buf_en/BUFGCE_O] [get_bd_pins $shift_register/CLK]
-      connect_bd_net [get_bd_pins $wiz/locked] [get_bd_pins $shift_register/D]
-      set rst_inverter [tapasco::ip::create_logic_vector rst_inverter]
-      set_property -dict [list CONFIG.C_SIZE {1} CONFIG.C_OPERATION {not} CONFIG.LOGO_FILE {data/sym_notgate.png}] $rst_inverter
-      connect_bd_net $resetn [get_bd_pins $rst_inverter/Op1]
-      connect_bd_net [get_bd_pins $rst_inverter/Res] [get_bd_pins $shift_register/SCLR]
-      connect_bd_net [get_bd_pins $const1/dout] [get_bd_pins $shift_register/CE]
-      connect_bd_net [get_bd_pins $shift_register/Q] [get_bd_pins $clkout1_buf/BUFGCE_CE]
-      connect_bd_net [get_bd_pins $clkout1_buf/BUFGCE_O] $design_clk2
-      connect_bd_net [get_bd_pins $clkout1_buf_uplus/BUFGCE_O] [get_bd_pins $clkout1_buf/BUFGCE_I]
-      set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/pcie/uplus_clk_wiz.xdc"
-      read_xdc $constraints_fn
-      set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
-      current_bd_instance $inst
-    } else {
-      set design_clk_wiz [tapasco::ip::create_clk_wiz design_clk_wiz]
-      set_property -dict [list CONFIG.CLK_OUT1_PORT {design_clk} \
-                        CONFIG.USE_SAFE_CLOCK_STARTUP {true} \
-                        CONFIG.CLKOUT1_REQUESTED_OUT_FREQ [tapasco::get_design_frequency] \
-                        CONFIG.USE_LOCKED {true} \
-                        CONFIG.USE_RESET {true} \
-                        CONFIG.RESET_TYPE {ACTIVE_LOW} \
-                        CONFIG.RESET_PORT {resetn} \
-                        CONFIG.PRIM_SOURCE {No_buffer} \
-                        ] $design_clk_wiz
-    }
+    
+    set design_clk_wiz [tapasco::ip::create_clk_wiz design_clk_wiz]
+    set_property -dict [list CONFIG.CLK_OUT1_PORT {design_clk} \
+                      CONFIG.USE_SAFE_CLOCK_STARTUP {false} \
+                      CONFIG.CLKOUT1_REQUESTED_OUT_FREQ [tapasco::get_design_frequency] \
+                      CONFIG.USE_LOCKED {true} \
+                      CONFIG.USE_RESET {true} \
+                      CONFIG.RESET_TYPE {ACTIVE_LOW} \
+                      CONFIG.RESET_PORT {resetn} \
+                      CONFIG.PRIM_SOURCE {No_buffer} \
+                      ] $design_clk_wiz
 
     connect_bd_net [get_bd_pins $design_clk_wiz/resetn] [get_bd_pins -regexp $mig/((mmcm_locked)|(c0_init_calib_complete))]
     connect_bd_net [get_bd_pins $design_clk_wiz/locked] $design_aresetn

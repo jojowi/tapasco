@@ -70,6 +70,7 @@ namespace eval platform {
     puts "Copying MIG configuration to project directory"
     file copy "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/MTA18ADF2G72PZ-2G3.csv" $part_file
 
+    set properties 
     set_property -dict [list CONFIG.C0.DDR4_TimePeriod {833} \
       CONFIG.C0.DDR4_InputClockPeriod {9996} \
       CONFIG.C0.DDR4_CLKOUT0_DIVIDE {5} \
@@ -81,7 +82,29 @@ namespace eval platform {
       CONFIG.C0.DDR4_AxiDataWidth {512} \
       CONFIG.C0.DDR4_AxiAddressWidth {34} \
       CONFIG.C0.DDR4_CustomParts $part_file \
-      CONFIG.C0.DDR4_isCustom {true}] $mig
+      CONFIG.C0.DDR4_isCustom {true} \
+      CONFIG.C0.DDR4_AUTO_AP_COL_A3 [tapasco::is_feature_enabled "ddrAutoPrechargeA3"] \
+      ]
+
+    if {[tapasco::is_feature_enabled "ddrStrictOrdering"]} {
+      lappend properties CONFIG.C0.DDR4_Ordering {Strict}
+    }
+
+    if {[tapasco::is_feature_enabled "ddrArbitrationSchme"]} {
+      set feature [tapasco::get_feature "ddrArbitrationSchme"]
+      dict with feature {
+        lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme $value
+      }
+    }
+
+    if {[tapasco::is_feature_enabled "ddrAddressMap"]} {
+      set feature [tapasco::get_feature "ddrAddressMap"]
+      dict with feature {
+        lappend properties CONFIG.C0.DDR4_Mem_Add_Map $value
+      }
+    }
+
+    set_property -dict $properties $mig
 
 
     # create memory control AXI slave
@@ -180,8 +203,8 @@ namespace eval platform {
     return $pcie_core
   }
 
-  proc insert_regslice {name master slave clock reset subsystem} {
-    if {[tapasco::is_feature_enabled "disableRegslice_$name"] == false} {
+  proc insert_regslice {name master slave clock reset subsystem force} {
+    if {[tapasco::is_feature_enabled "regslice_$name"] || $force} {
       set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 $subsystem/regslice_${name}]
       set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice
       delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins $master]]
@@ -205,20 +228,20 @@ namespace eval platform {
   }
 
   proc insert_regslices {} {
-    insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory"
-    insert_regslice "host_memctrl" "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" ""
-    insert_regslice "arch_mig" "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
-    insert_regslice "host_dma" "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
-    insert_regslice "dma_host" "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
-    insert_regslice "host_arch" "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
+    insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory" false
+    insert_regslice "host_memctrl" "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" "" false
+    insert_regslice "arch_mig" "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" "" false
+    insert_regslice "host_dma" "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" "" false
+    insert_regslice "dma_host" "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" "" false
+    insert_regslice "host_arch" "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" "" false
 
-    if {[tapasco::is_feature_enabled "disableRegsliceIP"] == false} {
+    if {[tapasco::is_feature_enabled "regslicePE"]} {
       set ips [get_bd_cells /arch/target_ip_*]
       foreach ip $ips {
         set masters [tapasco::get_aximm_interfaces $ip]
         foreach master $masters {
           set slave [get_bd_intf_pins -filter {MODE == Slave} -of_objects [get_bd_intf_nets -of_objects $master]]
-          insert_regslice [get_property NAME $ip] $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch"
+          insert_regslice [get_property NAME $ip] $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch" true
         }
       }
     }
