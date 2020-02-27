@@ -221,6 +221,10 @@ namespace eval hbm {
       for {set i 0} {$i < $numInterfaces} {incr i} {
         variable master [lindex $hbmInterfaces $i]
 
+        set pe [get_bd_cells -of_objects $master]
+        set base_address [format "0x0000000%02s0000000" $i]
+        set_property -dict [list CONFIG.base_address $base_address] $pe
+
         set pin [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /arch/M_AXI_HBM_${i}]
         connect_bd_intf_net $pin $master
 
@@ -232,7 +236,7 @@ namespace eval hbm {
         connect_bd_net [get_bd_pins design_clk] [get_bd_pins $converter/aclk]
         connect_bd_net [get_bd_pins $hbm/AXI_${hbm_index}_ACLK] [get_bd_pins $converter/aclk1]
 
-        if {[tapasco::is_feature_enabled "regsliceHBMPre"]} {
+        if {[tapasco::is_feature_enabled "regsliceHBMPre"] || [tapasco::is_feature_enabled [format "regsliceHBMPre%s" $hbm_index]} {
           set regslice_pre [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_pre_${i}]
           set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_pre
 
@@ -245,7 +249,7 @@ namespace eval hbm {
           connect_bd_intf_net $pin [get_bd_intf_pins $converter/S00_AXI]
         }
 
-        if {[tapasco::is_feature_enabled "regsliceHBMPost"]} {
+        if {[tapasco::is_feature_enabled "regsliceHBMPost"] || [tapasco::is_feature_enabled [format "regsliceHBMPost%s" $hbm_index]} {
           set regslice_post [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_post_${i}]
           set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice_post
 
@@ -282,7 +286,8 @@ namespace eval hbm {
     if {[tapasco::is_feature_enabled "HBM"]} {
       set hbmInterfaces [get_hbm_interfaces]
       for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
-        set args [lappend args M_AXI_HBM_${i} [list 0 0 -1 ""]]
+        set base [expr {0x10000000 * $i}]
+        set args [lappend args M_AXI_HBM_${i} [list $base 0 -1 ""]]
       }
       
     }

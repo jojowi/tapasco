@@ -94,6 +94,8 @@ template <typename T> struct RetVal final {
   T &value;
 };
 
+template <typename T> RetVal<T> makeRetVal(T &t) { return RetVal<T>(t); }
+
 /**
  * Type annotation for Tapasco launch argument pointers: If possible, data
  * should be placed in PE-local memory (faster access).

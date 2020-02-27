@@ -51,4 +51,4 @@ set_property C_USER_SCAN_CHAIN 1 [get_debug_cores dbg_hub]
 #add_cells_to_pblock pblock_pcie4c_ip_i_1 [get_cells system_i/host/axi_pcie3_0/inst/pcie4c_ip_i]
 #set_property USER_SLR_ASSIGNMENT in_ic_group [get_cells system_i/host/in_ic]
 
-#set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_nets system_i/hbm/clocking_0/ibuf/U0/IBUF_OUT[0]]
+set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_nets system_i/hbm/clocking_0/ibuf/U0/IBUF_OUT[0]]
