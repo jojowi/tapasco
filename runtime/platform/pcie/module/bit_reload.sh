@@ -136,7 +136,8 @@ then
 
 	# reload driver?
 	if [ $RELOADD -gt 0 ]; then
-		sudo insmod $DRIVERPATH/${DRIVER}.ko
+		#sudo insmod $DRIVERPATH/${DRIVER}.ko
+		sudo insmod /tmp/${DRIVER}.ko
 		sudo chown $USER /dev/tlkm*
 	fi
 

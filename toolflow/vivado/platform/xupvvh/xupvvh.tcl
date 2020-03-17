@@ -17,26 +17,12 @@
 # along with Tapasco.  If not, see <http://www.gnu.org/licenses/>.
 #
 # @file		xupvvh.tcl
-# @brief	XUPVVH platform implementation.
-# @author	J. Wirth, TU Darmstadt (j.wirth@stud.tu-darmstadt.de)
+# @brief	XUP-VVH platform implementation.
+# @author	J. Wirth, TU Darmstadt (wirth@esa.tu-darmstadt.de)
 #
 namespace eval platform {
   set platform_dirname "xupvvh"
   set pcie_width "x16"
-
-  proc get_ignored_segments { } {
-    set hbmInterfaces [hbm::get_hbm_interfaces]
-    set ignored [list]
-    lappend ignored "hbm/hbm_0/SAXI_"
-    for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
-      for {set j 0} {$j < [llength $hbmInterfaces]} {incr j} {
-        set axi_index [format %02s $i]
-        set mem_index [format %02s $j]
-        lappend ignored "/hbm/hbm_0/SAXI_${axi_index}/HBM_MEM${mem_index}"
-      }
-    }
-    return $ignored
-  }
 
   source $::env(TAPASCO_HOME_TCL)/platform/pcie/pcie_base.tcl
 
@@ -50,7 +36,6 @@ namespace eval platform {
 
     # create system reset
     set sys_rst_l [create_bd_port -dir I -type rst sys_rst_l]
-
     set sys_rst_inverter [create_bd_cell -type ip -vlnv xilinx.com:ip:util_vector_logic:2.0 sys_rst_inverter]
     set_property -dict [list CONFIG.C_SIZE {1} CONFIG.C_OPERATION {not} CONFIG.LOGO_FILE {data/sym_notgate.png}] $sys_rst_inverter
     connect_bd_net $sys_rst_l [get_bd_pins $sys_rst_inverter/Op1]
@@ -82,70 +67,35 @@ namespace eval platform {
       CONFIG.C0.DDR4_AxiAddressWidth {34} \
       CONFIG.C0.DDR4_CustomParts $part_file \
       CONFIG.C0.DDR4_isCustom {true} \
-      CONFIG.C0.DDR4_AUTO_AP_COL_A3 [tapasco::is_feature_enabled "ddrAutoPrechargeA3"] \
       ]
 
-    if {[tapasco::is_feature_enabled "ddrStrictOrdering"]} {
-      lappend properties CONFIG.C0.DDR4_Ordering {Strict}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeTDM"]} {
-      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {TDM}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeROUND_ROBIN"]} {
-      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {ROUND_ROBIN}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeRD_PRI_REG_STARVE_LIMIT"]} {
-      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {RD_PRI_REG_STARVE_LIMIT}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeWRITE_PRIORITY_REG"]} {
-      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {WRITE_PRIORITY_REG}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrArbitrationSchemeWRITE_PRIORITY"]} {
-      lappend properties CONFIG.C0.DDR4_AxiArbitrationScheme {WRITE_PRIORITY}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrAdressMapRBC"]} {
-      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {ROW_BANK_COLUMN}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrAdressMapBRC"]} {
-      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {BANK_ROW_COLUMN}
-    }
-
-    if {[tapasco::is_feature_enabled "ddrAdressMapRCBI"]} {
-      lappend properties CONFIG.C0.DDR4_Mem_Add_Map {ROW_COLUMN_BANK_INTLV}
-    }
 
     set_property -dict $properties $mig
 
 
-    # create memory control AXI slave
+    # connect MEM_CTRL interface (ECC configuration + status)
     set s_axi_mem_ctrl [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 S_MEM_CTRL]
 
-    set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 regslice_mem_ctrl]
-    set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice
-
-    connect_bd_intf_net [get_bd_intf_pins ${name}/C0_DDR4_S_AXI_CTRL] [get_bd_intf_pins $regslice/M_AXI]
-    connect_bd_intf_net [get_bd_intf_pins $regslice/S_AXI] $s_axi_mem_ctrl
-    connect_bd_net [get_bd_pins mem_clk] [get_bd_pins $regslice/aclk]
-    connect_bd_net [get_bd_pins mem_interconnect_aresetn] [get_bd_pins $regslice/aresetn]
-
-    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
+    set m_axi_mem_ctrl [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 /host/M_MEM_CTRL]
 
     set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells /host/out_ic]]
     set num_mi [expr "$num_mi_old + 1"]
     set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells /host/out_ic]
-    connect_bd_intf_net $m_si [get_bd_intf_pins /host/out_ic/[format "M%02d_AXI" $num_mi_old]]
+
+    connect_bd_intf_net [get_bd_intf_pins $mig/C0_DDR4_S_AXI_CTRL] $s_axi_mem_ctrl
+    connect_bd_intf_net $s_axi_mem_ctrl $m_axi_mem_ctrl
+    connect_bd_intf_net $m_axi_mem_ctrl [get_bd_intf_pins /host/out_ic/[format "M%02d_AXI" $num_mi_old]]
 
 
     create_ddr4_constraints
 
     return $mig
+  }
+
+  proc create_ddr4_constraints {} {
+    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/ddr4.xdc"
+    read_xdc $constraints_fn
+    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
   }
   
 
@@ -154,12 +104,12 @@ namespace eval platform {
 
     # create PCIe Clock
     set pcie_sys_clk [create_bd_intf_port -mode Slave -vlnv xilinx.com:interface:diff_clock_rtl:1.0 pcie_sys_clk]
-    set refclk_ibuf [tapasco::ip::create_util_buf refclk_ibuf]
-    set_property -dict [ list CONFIG.C_BUF_TYPE {IBUFDSGTE}  ] $refclk_ibuf
+    set pcie_sys_clk_ibuf [tapasco::ip::create_util_buf refclk_ibuf]
+    set_property -dict [ list CONFIG.C_BUF_TYPE {IBUFDSGTE}  ] $pcie_sys_clk_ibuf
 
     # create PCIe reset
-    set sys_reset_l [create_bd_port -dir I -type rst pcie_sys_reset_l]
-    set_property -dict [ list CONFIG.POLARITY {ACTIVE_LOW}  ] $sys_reset_l
+    set pcie_sys_reset_l [create_bd_port -dir I -type rst pcie_sys_reset_l]
+    set_property -dict [ list CONFIG.POLARITY {ACTIVE_LOW}  ] $pcie_sys_reset_l
 
     # create PCIe core
     set pcie_7x_mgt [create_bd_intf_port -mode Master -vlnv xilinx.com:interface:pcie_7x_mgt_rtl:1.0 pcie_7x_mgt]
@@ -207,10 +157,10 @@ namespace eval platform {
 
     # create connections
     connect_bd_intf_net $pcie_7x_mgt [get_bd_intf_pins $pcie_core/pcie_mgt]
-    connect_bd_intf_net $pcie_sys_clk [get_bd_intf_pins $refclk_ibuf/CLK_IN_D]
-    connect_bd_net [get_bd_pins $pcie_core/sys_clk] [get_bd_pins $refclk_ibuf/IBUF_DS_ODIV2]
-    connect_bd_net [get_bd_pins $pcie_core/sys_clk_gt] [get_bd_pins $refclk_ibuf/IBUF_OUT]
-    connect_bd_net $sys_reset_l [get_bd_pins $pcie_core/sys_rst_n]
+    connect_bd_intf_net $pcie_sys_clk [get_bd_intf_pins $pcie_sys_clk_ibuf/CLK_IN_D]
+    connect_bd_net [get_bd_pins $pcie_core/sys_clk] [get_bd_pins $pcie_sys_clk_ibuf/IBUF_DS_ODIV2]
+    connect_bd_net [get_bd_pins $pcie_core/sys_clk_gt] [get_bd_pins $pcie_sys_clk_ibuf/IBUF_OUT]
+    connect_bd_net $pcie_sys_reset_l [get_bd_pins $pcie_core/sys_rst_n]
 
 
     tapasco::ip::create_msixusptrans "MSIxTranslator" $pcie_core
@@ -220,8 +170,29 @@ namespace eval platform {
     return $pcie_core
   }
 
-  proc insert_regslice {name master slave clock reset subsystem force} {
-    if {[tapasco::is_feature_enabled "regslice_$name"] || $force} {
+  proc create_constraints {} {
+    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/board.xdc"
+    read_xdc $constraints_fn
+    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
+  }
+
+  # Checks if the optional register slice given by the name is enabled (based on regslice feature and default value)
+  proc is_regslice_enabled {name default} {
+    if {[tapasco::is_feature_enabled "Regslice"]} {
+      set regslices [tapasco::get_feature "Regslice"]
+      if  {[dict exists $regslices $name]} {
+          return [dict get $regslices $name]
+        } else {
+          return $default
+        }
+    } else {
+      return $default
+    }
+  }
+
+  # Inserts a new register slice between given master and slave (for SLR crossing)
+  proc insert_regslice {name default master slave clock reset subsystem} {
+    if {[is_regslice_enabled $name $default]} {
       set regslice [create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 $subsystem/regslice_${name}]
       set_property -dict [list CONFIG.REG_AW {15} CONFIG.REG_AR {15} CONFIG.REG_W {15} CONFIG.REG_R {15} CONFIG.REG_B {15} CONFIG.USE_AUTOPIPELINING {1}] $regslice
       delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins $master]]
@@ -232,33 +203,22 @@ namespace eval platform {
     }
   }
 
-  proc create_constraints {} {
-    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/board.xdc"
-    read_xdc $constraints_fn
-    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
-  }
-
-  proc create_ddr4_constraints {} {
-    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/xupvvh/ddr4.xdc"
-    read_xdc $constraints_fn
-    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
-  }
-
+  # Insert optional register slices
   proc insert_regslices {} {
-    insert_regslice "dma_migic" "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory" false
-    insert_regslice "host_memctrl" "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" "" false
-    insert_regslice "arch_mig" "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" "" false
-    insert_regslice "host_dma" "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" "" false
-    insert_regslice "dma_host" "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" "" false
-    insert_regslice "host_arch" "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" "" false
+    insert_regslice "DMA_MIGIC" false "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory"
+    insert_regslice "HOST_MEMCTRL" true "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" ""
+    insert_regslice "ARCH_MEM" false "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
+    insert_regslice "HOST_DMA" true "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
+    insert_regslice "DMA_HOST" true "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
+    insert_regslice "HOST_ARCH" true "/host/M_ARCH" "/arch/S_ARCH" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
 
-    if {[tapasco::is_feature_enabled "regslicePE"]} {
+    if {[is_regslice_enabled "PE" false]} {
       set ips [get_bd_cells /arch/target_ip_*]
       foreach ip $ips {
         set masters [tapasco::get_aximm_interfaces $ip]
         foreach master $masters {
           set slave [get_bd_intf_pins -filter {MODE == Slave} -of_objects [get_bd_intf_nets -of_objects $master]]
-          insert_regslice [get_property NAME $ip] $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch" true
+          insert_regslice [get_property NAME $ip] true $master $slave "/arch/design_clk" "/arch/design_interconnect_aresetn" "/arch"
         }
       }
     }
@@ -270,6 +230,7 @@ namespace eval platform {
         namespace export addressmap
 
         proc addressmap {args} {
+            # add ECC config to platform address map
             set args [lappend args "M_MEM_CTRL" [list 0x40000 0x10000 0 "PLATFORM_COMPONENT_ECC"]]
             return $args
         }

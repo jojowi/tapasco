@@ -124,6 +124,7 @@ namespace eval arch {
     return [tapasco::get_aximm_interfaces [get_bd_cell -hier -filter "NAME == $name"] $mode]
   }
 
+  # Determines the number of AXI-MM interfaces in the composition
   proc arch_get_num_masters {composition} {
     set no_kinds [llength [dict keys $composition]]
     set ic_m 0
@@ -146,7 +147,7 @@ namespace eval arch {
     return $no_masters
   }
 
-  # Instantiates the memory interconnect hierarchy.
+  # Instantiates a memory interconnect hierarchy for the given number of masters
   proc arch_create_mem_interconnects {outs no_masters} {
     variable arch_mem_ports
 
