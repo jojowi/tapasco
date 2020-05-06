@@ -27,61 +27,169 @@ namespace eval platform {
 
   source $::env(TAPASCO_HOME_TCL)/platform/pcie/pcie_base.tcl
 
-  if {[tapasco::is_feature_enabled "HBM"]} {
-
-    proc get_ignored_segments { } {
-      set hbmInterfaces [hbm::get_hbm_interfaces]
-      set ignored [list]
-      #lappend ignored "hbm/hbm_0/SAXI_"
-      for {set i 0} {$i < [llength $hbmInterfaces]} {incr i} {
-        for {set j 0} {$j < [llength $hbmInterfaces]} {incr j} {
-          set axi_index [format %02s $i]
-          set mem_index [format %02s $j]
-          lappend ignored "/hbm/hbm_0/SAXI_${axi_index}/HBM_MEM${mem_index}"
-        }
-      }
-      return $ignored
-    }
-
+  proc get_ignored_segments { } {
+    set hbmInterfaces [hbm::get_hbm_interfaces]
+    set ignored [list]
+    lappend ignored "/memory/mig/hbm_0/SAXI_00/HBM_MEM01"
+    return $ignored
   }
 
+  # Creates input ports for reference clock(s)
+  proc create_refclk_ports {} {
+      set hbm_ref_clk_0 [ create_bd_intf_port -mode Slave -vlnv xilinx.com:interface:diff_clock_rtl:1.0 hbm_ref_clk_0 ]
+      set_property CONFIG.FREQ_HZ 100000000 $hbm_ref_clk_0
+  }
+
+  # Creates HBM configuration for given number of active HBM ports
+  proc create_hbm_properties {} {
+    # disable APB debug port
+    # disable AXI crossbar (global addressing)
+    # configure AXI clock freq
+    set hbm_properties [list \
+      CONFIG.USER_APB_EN {false} \
+      CONFIG.USER_SWITCH_ENABLE_00 {false} \
+      CONFIG.USER_SWITCH_ENABLE_01 {false} \
+      CONFIG.USER_AXI_INPUT_CLK_FREQ {450} \
+      CONFIG.USER_AXI_INPUT_CLK_NS {2.222} \
+      CONFIG.USER_AXI_INPUT_CLK_PS {2222} \
+      CONFIG.USER_AXI_INPUT_CLK_XDC {2.222} \
+      CONFIG.HBM_MMCM_FBOUT_MULT0 {51} \
+      CONFIG.USER_XSDB_INTF_EN {FALSE}
+    ]
+    set maxSlaves 16
+    lappend hbm_properties \
+      CONFIG.USER_HBM_DENSITY {4GB} \
+      CONFIG.USER_HBM_STACK {1} \
+
+    # enable HBM ports and memory controllers as required (two ports per mc)
+    for {set i 1} {$i < $maxSlaves} {incr i} {
+      set saxi [format %02s $i]
+      lappend hbm_properties CONFIG.USER_SAXI_${saxi} {false}
+      if ([even $i]) {
+        set mc [format %02s [expr {$i / 2}]]
+        lappend hbm_properties CONFIG.USER_MC_ENABLE_${mc} {false}
+      }
+    }
+
+
+    # configure memory controllers
+    for {set i 0} {$i < $maxSlaves} {incr i} {
+      if ([even $i]) {
+        set mc [format %s [expr {$i / 2}]]
+        lappend hbm_properties CONFIG.USER_MC${mc}_ECC_BYPASS false
+        lappend hbm_properties CONFIG.USER_MC${mc}_ECC_CORRECTION false
+        lappend hbm_properties CONFIG.USER_MC${mc}_EN_DATA_MASK true
+        lappend hbm_properties CONFIG.USER_MC${mc}_TRAFFIC_OPTION {Linear}
+        lappend hbm_properties CONFIG.USER_MC${mc}_BG_INTERLEAVE_EN true
+      }
+    }
+
+    return $hbm_properties
+  }
+
+  # Creates HBM clocking infrastructure for a single stack
+  proc create_clocking {} {
+    set group [create_bd_cell -type hier clocking_0]
+    set instance [current_bd_instance .]
+    current_bd_instance $group
+
+    set hbm_ref_clk [create_bd_pin -type "clk" -dir "O" "hbm_ref_clk"]
+    set axi_clk_0 [create_bd_pin -type "clk" -dir "O" "axi_clk_0"]
+    set mem_clk [create_bd_pin -type clk -dir O mem_clk]
+    set axi_reset [create_bd_pin -type "rst" -dir "O" "axi_reset"]
+    set mem_peripheral_aresetn [create_bd_pin -type "rst" -dir "I" "mem_peripheral_aresetn"]
+
+    set ibuf [tapasco::ip::create_util_buf ibuf]
+    set_property -dict [ list CONFIG.C_BUF_TYPE {IBUFDS}  ] $ibuf
+
+    connect_bd_intf_net [get_bd_intf_ports /hbm_ref_clk_0] [get_bd_intf_pins $ibuf/CLK_IN_D]
+
+    set clk_wiz [tapasco::ip::create_clk_wiz clk_wiz]
+    set_property -dict [list CONFIG.PRIM_SOURCE {No_buffer} CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {450} CONFIG.CLKOUT2_REQUESTED_OUT_FREQ {300} CONFIG.CLKOUT2_USED {true} CONFIG.RESET_TYPE {ACTIVE_LOW} CONFIG.NUM_OUT_CLKS {2} CONFIG.RESET_PORT {resetn}] $clk_wiz
+
+    connect_bd_net [get_bd_pins $ibuf/IBUF_OUT] $hbm_ref_clk
+    connect_bd_net [get_bd_pins $ibuf/IBUF_OUT] [get_bd_pins $clk_wiz/clk_in1]
+
+    connect_bd_net $mem_peripheral_aresetn [get_bd_pins $clk_wiz/resetn]
+
+    set reset_generator [tapasco::ip::create_logic_vector reset_generator]
+    set_property -dict [list CONFIG.C_SIZE {1} CONFIG.C_OPERATION {and} CONFIG.LOGO_FILE {data/sym_andgate.png}] $reset_generator
+
+    connect_bd_net $mem_peripheral_aresetn [get_bd_pins $reset_generator/Op1]
+    connect_bd_net [get_bd_pins $clk_wiz/locked] [get_bd_pins $reset_generator/Op2]
+
+    connect_bd_net [get_bd_pins axi_clk_0] [get_bd_pins $clk_wiz/clk_out1]
+    connect_bd_net $mem_clk [get_bd_pins $clk_wiz/clk_out2]
+    
+
+    connect_bd_net $axi_reset [get_bd_pins $reset_generator/Res]
+
+    current_bd_instance $instance
+    return $group
+  }
+
+  # Connects a range of HBM AXI clocks with the outputs of a clocking infrastructure
+  proc connect_clocking {clocking hbm startInterface numInterfaces} {
+    for {set i 0} {$i < $numInterfaces} {incr i} {
+        set hbm_index [format %02s [expr $i + $startInterface]]
+        set block_index [expr $i < 16 ? 0 : 1]
+        set clk_index [expr ($i % 16) / 2]
+        set clk_index [expr $clk_index < 7 ? $clk_index : 6]
+        connect_bd_net [get_bd_pins $clocking/axi_reset] [get_bd_pins $hbm/AXI_${hbm_index}_ARESET_N]
+        connect_bd_net [get_bd_pins $clocking/axi_clk_${clk_index}] [get_bd_pins $hbm/AXI_${hbm_index}_ACLK]
+      }
+  }
+
+  proc even x {expr {($x % 2) == 0}}
+
   proc create_mig_core {name} {
-    puts "Creating MIG core for DDR ..."
-    set s_axi_host [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 "S_MEM_CTRL"]
+    puts "Creating MIG core for HBM ..."
 
-    set mig [tapasco::ip::create_us_ddr ${name}]
-    apply_bd_automation -rule xilinx.com:bd_rule:board -config { Board_Interface {ddr4_sdram_c1 ( DDR4 SDRAM C1 ) } Manual_Source {Auto}}  [get_bd_intf_pins $mig/C0_DDR4]
-    apply_bd_automation -rule xilinx.com:bd_rule:board -config { Board_Interface {sysclk1 ( 100 MHz System differential clock1 ) } Manual_Source {Auto}}  [get_bd_intf_pins $mig/C0_SYS_CLK]
-    apply_bd_automation -rule xilinx.com:bd_rule:board -config { Board_Interface {resetn ( FPGA Resetn ) } Manual_Source {New External Port (ACTIVE_HIGH)}}  [get_bd_pins $mig/sys_rst]
+    set inst [current_bd_instance .]
+    puts $inst
+    
+    set mig [create_bd_cell -type hier $name]
+    current_bd_instance -quiet $mig
+    set c0_ddr4_aresetn [create_bd_pin -type rst -dir I c0_ddr4_aresetn]
+    set c0_init_calib_complete [create_bd_pin -dir O c0_init_calib_complete]
+    set c0_ddr4_ui_clk [create_bd_pin -dir O -type clk c0_ddr4_ui_clk]
+    set c0_ddr4_ui_clk_sync_rst [create_bd_pin -dir O -type rst c0_ddr4_ui_clk_sync_rst]
+    set C0_DDR4_S_AXI [create_bd_intf_pin -mode Slave -vlnv xilinx.com:interface:aximm_rtl:1.0 C0_DDR4_S_AXI]
 
+    create_refclk_ports
 
-    connect_bd_intf_net [get_bd_intf_pins $mig/C0_DDR4_S_AXI_CTRL] $s_axi_host
+    set hbm_properties [create_hbm_properties]
 
-    #set ila [create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila:1.1 system_ila_0]
-    #set_property -dict [list CONFIG.C_BRAM_CNT {0.5} CONFIG.C_MON_TYPE {NATIVE} CONFIG.C_NUM_OF_PROBES {2}] $ila
-    #connect_bd_net [get_bd_pins $mig/sys_rst] [get_bd_pins $ila/probe0]
-    #connect_bd_net [get_bd_pins $mig/c0_ddr4_aresetn] [get_bd_pins $ila/probe1]
-    #connect_bd_net [get_bd_pins /host/axi_pcie3_0/axi_aclk] [get_bd_pins $ila/clk]
+    # create and configure HBM IP
+    set hbm [ create_bd_cell -type ip -vlnv xilinx.com:ip:hbm:1.0 "hbm_0" ]
+    set_property -dict $hbm_properties $hbm
 
+    # create and connect clocking infrastructure for left stack
+    set clocking [create_clocking]
+    connect_clocking $clocking $hbm 0 1
+    connect_bd_net [get_bd_pins $clocking/hbm_ref_clk] [get_bd_pins $hbm/HBM_REF_CLK_0]
+
+    connect_bd_net [get_bd_pins $clocking/hbm_ref_clk] [get_bd_pins $hbm/APB_0_PCLK]
+    connect_bd_net [get_bd_pins /host/axi_pcie3_0/user_lnk_up] [get_bd_pins $hbm/APB_0_PRESET_N] [get_bd_pins $clocking/mem_peripheral_aresetn]
+
+    connect_bd_net $c0_ddr4_ui_clk_sync_rst [get_bd_pins $clocking/axi_reset]
+    connect_bd_net $c0_init_calib_complete [get_bd_pins $clocking/axi_reset]
+    connect_bd_net $c0_ddr4_ui_clk [get_bd_pins $clocking/mem_clk]
+
+    set converter [create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 smartconnect_0]
+    set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_CLKS {2} CONFIG.HAS_ARESETN {0}] $converter
+    save_bd_design
+    connect_bd_net [get_bd_pins $clocking/mem_clk] [get_bd_pins $converter/aclk]
+    connect_bd_net [get_bd_pins $hbm/AXI_00_ACLK] [get_bd_pins $converter/aclk1]
+    connect_bd_intf_net [get_bd_intf_pins $converter/M00_AXI] [get_bd_intf_pins $hbm/SAXI_00]
+    connect_bd_intf_net [get_bd_intf_pins $converter/S00_AXI] $C0_DDR4_S_AXI
+
+    current_bd_instance -quiet $inst
+    
     set const [tapasco::ip::create_constant constz 1 0]
     make_bd_pins_external $const
 
-    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/AU280/board.xdc"
-    read_xdc $constraints_fn
-    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
-
-    set inst [current_bd_instance -quiet .]
-    current_bd_instance -quiet
-
-    set m_si [create_bd_intf_pin -mode Master -vlnv xilinx.com:interface:aximm_rtl:1.0 host/M_MEM_CTRL]
-
-    set num_mi_old [get_property CONFIG.NUM_MI [get_bd_cells host/out_ic]]
-    set num_mi [expr "$num_mi_old + 1"]
-    set_property -dict [list CONFIG.NUM_MI $num_mi] [get_bd_cells host/out_ic]
-    connect_bd_intf_net $m_si [get_bd_intf_pins host/out_ic/[format "M%02d_AXI" $num_mi_old]]
-
-    current_bd_instance -quiet $inst
-
+    
     return $mig
   }
   
@@ -141,6 +249,10 @@ namespace eval platform {
 
     tapasco::ip::create_msixusptrans "MSIxTranslator" $pcie_core
 
+    set constraints_fn "$::env(TAPASCO_HOME_TCL)/platform/AU280/board.xdc"
+    read_xdc $constraints_fn
+    set_property PROCESSING_ORDER EARLY [get_files $constraints_fn]
+
     return $pcie_core
   }
 
@@ -174,7 +286,7 @@ namespace eval platform {
   # Insert optional register slices
   proc insert_regslices {} {
     insert_regslice "dma_migic" false "/memory/dma/m32_axi" "/memory/mig_ic/S00_AXI" "/memory/mem_clk" "/memory/mem_peripheral_aresetn" "/memory"
-    insert_regslice "host_memctrl" true "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" ""
+    #insert_regslice "host_memctrl" true "/host/M_MEM_CTRL" "/memory/S_MEM_CTRL" "/clocks_and_resets/mem_clk" "/clocks_and_resets/mem_interconnect_aresetn" ""
     insert_regslice "arch_mem" false "/arch/M_MEM_0" "/memory/S_MEM_0" "/clocks_and_resets/design_clk" "/clocks_and_resets/design_interconnect_aresetn" ""
     insert_regslice "host_dma" true "/host/M_DMA" "/memory/S_DMA" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
     insert_regslice "dma_host" true "/memory/M_HOST" "/host/S_HOST" "/clocks_and_resets/host_clk" "/clocks_and_resets/host_interconnect_aresetn" ""
